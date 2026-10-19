@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#071b18">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="uno-icon.svg">
+  <link rel="preload" as="image" href="assets/uno_immersive_bg.jpg">
+  <title>UNO! 3D Classic - Offline & Local Network Multiplayer</title>
+  <link rel="stylesheet" href="css/style.css?v=3.8">
+  <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
+</head>
+<body>
+  <div class="app-background-glow"></div>
+
+  <section id="startup-screen" class="startup-screen" aria-labelledby="startup-title" aria-live="polite">
+    <div class="startup-card">
+      <div class="startup-loader" aria-hidden="true"><span></span></div>
+      <p id="startup-status" class="startup-status">Preparing your table…</p>
+      <button id="startup-start" class="startup-start" type="button" disabled>
+        <span id="startup-title">START</span><i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+      </button>
+    </div>
+  </section>
+
+  <div class="screen-scaler" id="screen-scaler">
+    <div class="app-container app-container-fullscreen">
+      <!-- Main Screens Router -->
+      <main class="main-content">
+      
+        <!-- MENU SCREEN -->
+        <section id="menu-screen" class="screen active">
+          <div class="menu-card-decor menu-card-decor-left" aria-hidden="true"><span>UNO</span></div>
+          <div class="menu-card-decor menu-card-decor-right" aria-hidden="true"><span>UNO</span></div>
+          <div class="menu-wallet-badge" aria-label="Coin balance"><i class="fa-solid fa-coins" aria-hidden="true"></i><span id="menu-coin-balance">100</span><span>coins</span></div>
+          <!-- Premium Header for Menu/Lobby screens only -->
+          <header class="header menu-header-floating">
+            <div class="logo-3d-container">
+              <h1 class="logo-3d">
+                <span class="l-red">U</span><span class="l-yellow">N</span><span class="l-green">O</span><span class="l-blue">!</span>
+              </h1>
+              <div class="logo-shadow"></div>
+            </div>
+            <p class="tagline"><i class="fa-solid fa-gamepad"></i> 3D Perspective Edition</p>
+          </header>
+
+          <div class="card-panel glass-morphic">
+            <div class="panel-header">
+              <h2>Select Game Mode</h2>
+              <p>Play Solo against Smart AI or with Friends on your local Wi-Fi!</p>
+            </div>
+
+            <div class="input-group">
+              <label for="player-name"><i class="fa-solid fa-user-astronaut"></i> Player Username</label>
+              <input type="text" id="player-name" placeholder="Captain UNO" value="Player 1" maxlength="15">
+            </div>
+
+            <div class="mode-buttons-grid">
+              <button id="btn-vs-ai" class="btn-premium btn-ai">
+                <div class="btn-icon"><i class="fa-solid fa-robot"></i></div>
+                <div class="btn-info">
+                  <span class="btn-title">Vs Computer</span>
+                  <span class="btn-desc">Offline Singleplayer AI Mode</span>
+                </div>
+              </button>
+
+              <button id="btn-create-room" class="btn-premium btn-host">
+                <div class="btn-icon"><i class="fa-solid fa-house-laptop"></i></div>
+                <div class="btn-info">
+                  <span class="btn-title">Host Wi-Fi Game</span>
+                  <span class="btn-desc">Create a Local LAN Lobby</span>
+                </div>
+              </button>
+
+              <button id="btn-show-join" class="btn-premium btn-join-toggle">
+                <div class="btn-icon"><i class="fa-solid fa-network-wired"></i></div>
+                <div class="btn-info">
+                  <span class="btn-title">Join Local Game</span>
+                  <span class="btn-desc">Connect with Friend's Code</span>
+                </div>
+              </button>
+
+              <button id="btn-customize-layout" class="btn-premium btn-layout-toggle">
+                <div class="btn-icon"><i class="fa-solid fa-sliders"></i></div>
+                <div class="btn-info">
+                  <span class="btn-title">Customize Layout</span>
+                  <span class="btn-desc">Table scale, cards & font size</span>
+                </div>
+              </button>
+
+              <button id="btn-shop" class="btn-premium btn-shop-toggle">
+                <div class="btn-icon"><i class="fa-solid fa-store"></i></div>
+                <div class="btn-info">
+                  <span class="btn-title">Theme Shop</span>
+                  <span class="btn-desc">Card backs and table themes</span>
+                </div>
+              </button>
+            </div>
+
+            <!-- Join Interactive Box -->
+            <div id="join-box" class="join-box hidden animate-slide-down">
+              <div class="join-input-wrapper">
+                <i class="fa-solid fa-key join-icon"></i>
+                <input type="text" id="room-code-input" placeholder="ROOM CODE (6-CHARS)" maxlength="6">
+              </div>
+              <button id="btn-join-room" class="btn btn-warning-3d">
+                Join <i class="fa-solid fa-arrow-right-to-bracket"></i>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- LOBBY SCREEN -->
+        <section id="lobby-screen" class="screen">
+          <div class="card-panel glass-morphic">
+            <div class="lobby-badge">Lobby Status</div>
+            <h2>Waiting Area</h2>
+          
+            <div class="room-info-card">
+              <div class="room-code-section">
+                <span class="code-label">ROOM LOBBY CODE</span>
+                <div id="lobby-room-code" class="highlight-code">------</div>
+              </div>
+              <p id="lobby-wager-info" class="lobby-wager-info"></p>
+              <p class="lan-instruction">
+                <i class="fa-solid fa-circle-info"></i> Ask friends on the same Wi-Fi network to use this Room Code to join!
+              </p>
+            </div>
+
+            <div class="players-list-container">
+              <h3><i class="fa-solid fa-users"></i> Joined Crew (<span id="player-count">1</span>/4)</h3>
+              <ul id="players-list" class="players-list">
+                <!-- Populated dynamically -->
+              </ul>
+            </div>
+
+            <div class="lobby-actions">
+              <button id="btn-start-game" class="btn btn-success-3d hidden">
+                <i class="fa-solid fa-circle-play"></i> Start Match
+              </button>
+              <button id="btn-show-invite-qr" class="btn btn-primary-3d hidden">
+                <i class="fa-solid fa-qrcode"></i> Show Invite QR
+              </button>
+              <button id="btn-leave-lobby" class="btn btn-danger-3d">
+                <i class="fa-solid fa-right-from-bracket"></i> Leave Lobby
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 3D PERSPECTIVE GAME BOARD SCREEN -->
+        <section id="game-screen" class="screen">
+          <div class="game-wrapper">
+          
+            <!-- Floating Top-Right Menu Button -->
+            <button id="btn-menu-trigger" class="btn-menu-floating" title="Game Menu">
+              <i class="fa-solid fa-bars"></i> Menu
+            </button>
+
+            <!-- Main Table Space (Maximized) -->
+            <div class="table-3d-space">
+              <div class="table-3d-plate">
+                <div class="table-surface-grid"></div>
+              
+                <!-- OPPONENT: TOP (Opponent 1) -->
+                <div class="opponent-seat seat-top">
+                  <div class="opp-info">
+                    <span class="opp-name" id="opp-top-name">Opponent Top</span>
+                    <div class="opp-badge"><i class="fa-solid fa-clone"></i> <span id="opp-top-count">7</span></div>
+                  </div>
+                  <div class="opponent-card">
+                    <div class="opp-cards-preview" id="opp-top-cards">
+                      <!-- Cards will render here -->
+                    </div>
+                  </div>
+                </div>
+
+                <!-- OPPONENT: LEFT (Opponent 2) -->
+                <div class="opponent-seat seat-left">
+                  <div class="opp-info">
+                    <span class="opp-name" id="opp-left-name">Opponent Left</span>
+                    <div class="opp-badge"><i class="fa-solid fa-clone"></i> <span id="opp-left-count">7</span></div>
+                  </div>
+                  <div class="opponent-card">
+                    <div class="opp-cards-preview" id="opp-left-cards">
+                      <!-- Cards will render here -->
+                    </div>
+                  </div>
+                </div>
+
+                <!-- OPPONENT: RIGHT (Opponent 3) -->
+                <div class="opponent-seat seat-right">
+                  <div class="opp-info">
+                    <span class="opp-name" id="opp-right-name">Opponent Right</span>
+                    <div class="opp-badge"><i class="fa-solid fa-clone"></i> <span id="opp-right-count">7</span></div>
+                  </div>
+                  <div class="opponent-card">
+                    <div class="opp-cards-preview" id="opp-right-cards">
+                      <!-- Cards will render here -->
+                    </div>
+                  </div>
+                </div>
+
+                <!-- CENTER DECK AREA -->
+                <div class="center-deck-area">
+                  <!-- 3D Direction Flow Ring -->
+                  <div id="direction-ring-3d" class="direction-ring-3d clockwise">
+                    <div class="dir-arrow arrow-1"><i class="fa-solid fa-chevron-right"></i></div>
+                    <div class="dir-arrow arrow-2"><i class="fa-solid fa-chevron-right"></i></div>
+                    <div class="dir-arrow arrow-3"><i class="fa-solid fa-chevron-right"></i></div>
+                    <div class="dir-arrow arrow-4"><i class="fa-solid fa-chevron-right"></i></div>
+                  </div>
+
+                  <!-- 3D Draw Deck (Face down) -->
+                  <div id="draw-deck-3d" class="deck-3d-stack draw-pile">
+                    <div class="card-3d card-back" style="--i: 0"><div class="card-inner"><div class="card-inner-ellipse"></div></div></div>
+                    <div class="card-3d card-back" style="--i: 1"><div class="card-inner"><div class="card-inner-ellipse"></div></div></div>
+                    <div class="card-3d card-back" style="--i: 2"><div class="card-inner"><div class="card-inner-ellipse"></div></div></div>
+                    <div class="card-3d card-back" style="--i: 3"><div class="card-inner"><div class="card-inner-ellipse"></div></div></div>
+                    <div class="card-3d card-back" style="--i: 4"><div class="card-inner"><div class="card-inner-ellipse"></div></div></div>
+                  </div>
+
+                  <!-- 3D Discard Pile (Face up) -->
+                  <div id="discard-pile-3d" class="deck-3d-stack discard-pile">
+                    <!-- Top Card is dynamically added here -->
+                  </div>
+                </div>
+
+                <!-- CURRENT PLAYER AREA (Bottom Seat) -->
+                <div class="current-player-seat">
+                  <div class="player-controls-row">
+                    <span class="my-title">Your Hand</span>
+                  </div>
+                  <div id="player-cards-fan" class="player-cards-fan-layout">
+                    <!-- Playable fanned cards go here -->
+                  </div>
+                </div>
+
+                <!-- Dedicated Action Control Dock (Stable layout inside green felt, above hand) -->
+                <div class="action-dock">
+                  <button id="btn-uno" class="uno-button-pulse">UNO!</button>
+                  <button id="btn-pass-turn" class="btn btn-warning-3d">Pass Turn</button>
+                </div>
+
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+      </main>
+
+      <!-- OVERLAYS & MODALS -->
+
+      <!-- Dynamic Color Picker Modal for Wild Cards -->
+      <div id="color-picker-modal" class="modal-overlay wild-color-overlay hidden">
+        <div class="modal-content color-picker-box">
+          <h3><i class="fa-solid fa-palette"></i> Choose Color</h3>
+          <p>Set the next color</p>
+          <div class="color-options-grid" id="color-wheel">
+            <button class="color-opt opt-red" data-color="red">
+              <i class="fa-solid fa-bolt"></i>
+              <span class="color-label">RED</span>
+            </button>
+            <button class="color-opt opt-blue" data-color="blue">
+              <i class="fa-solid fa-bolt"></i>
+              <span class="color-label">BLUE</span>
+            </button>
+            <button class="color-opt opt-green" data-color="green">
+              <i class="fa-solid fa-bolt"></i>
+              <span class="color-label">GREEN</span>
+            </button>
+            <button class="color-opt opt-yellow" data-color="yellow">
+              <i class="fa-solid fa-bolt"></i>
+              <span class="color-label">YELLOW</span>
+            </button>
+          </div>
+          <div class="color-wheel-center"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+        </div>
+      </div>
+
+      <!-- Game Over Screen Modal -->
+      <div id="game-over-modal" class="modal-overlay hidden">
+        <div class="modal-content game-over-box animate-scale-up">
+          <div class="winner-trophy-icon">
+            <i class="fa-solid fa-trophy"></i>
+          </div>
+          <h2 id="game-winner-title">Victory!</h2>
+          <p id="game-winner-message">Congratulations, Player 1 won the match!</p>
+          <div class="game-over-actions">
+            <button id="btn-restart" class="btn btn-success-3d">Play Again <i class="fa-solid fa-arrow-rotate-right"></i></button>
+            <button id="btn-home" class="btn btn-secondary-3d">Main Menu <i class="fa-solid fa-house"></i></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- WebRTC P2P QR Code Signaling Modal -->
+      <div id="p2p-signaling-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="p2p-modal-title">
+        <div class="modal-content p2p-signaling-box animate-scale-up glass-morphic">
+          <div class="modal-header">
+            <div>
+              <h3 id="p2p-modal-title"><i class="fa-solid fa-qrcode"></i> Local P2P Multiplayer</h3>
+              <p class="p2p-modal-subtitle">Zero-Data Wi-Fi & Hotspot Direct Connect</p>
+            </div>
+            <button id="btn-p2p-close" class="drawer-close-btn" aria-label="Close dialog"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+
+          <div id="p2p-status-message" class="p2p-status-badge status-info">
+            Initializing WebRTC P2P Connection…
+          </div>
+
+          <!-- HOST STEP 1: Show Offer QR Code & Manual Copy -->
+          <div id="host-step-1" class="p2p-step-panel hidden">
+            <div class="p2p-step-badge">Step 1: Host Room Offer</div>
+            <p class="p2p-instruction">Ask your friend to tap <strong>"Join Local Game"</strong> and scan this QR code:</p>
+            <div class="qr-code-frame" id="host-qr-container">
+              <!-- SVG QR Code is injected here -->
+            </div>
+            
+            <details class="p2p-details-fallback">
+              <summary><i class="fa-solid fa-keyboard"></i> Manual Connection Code (Copy / Paste Fallback)</summary>
+              <div class="manual-code-row">
+                <input type="text" id="p2p-host-offer-text" readonly onclick="this.select()">
+                <button type="button" id="btn-copy-host-offer" class="btn btn-primary-3d">
+                  <i class="fa-solid fa-copy"></i> Copy
+                </button>
+              </div>
+            </details>
+
+            <div class="p2p-actions-divider">
+              <span>Next: Complete Handshake with Friend</span>
+            </div>
+
+            <!-- Host Step 2: Scan Friend's Answer -->
+            <div class="host-answer-section">
+              <p class="p2p-instruction">Once your friend scans, scan their <strong>Response QR Code</strong>:</p>
+              <button type="button" id="btn-start-scan-answer" class="btn btn-warning-3d btn-full">
+                <i class="fa-solid fa-camera"></i> Scan Friend's Response QR
+              </button>
+
+              <div id="host-scanner-box" class="scanner-container hidden">
+                <video id="host-scanner-video" playsinline></video>
+                <div class="scanner-reticle"></div>
+              </div>
+
+              <div class="manual-code-row host-manual-answer-row">
+                <input type="text" id="p2p-host-answer-input" placeholder="Or paste friend's Response code here">
+                <button type="button" id="btn-submit-host-answer" class="btn btn-success-3d">
+                  <i class="fa-solid fa-plug"></i> Connect
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- CLIENT STEP 1: Scan Host Offer -->
+          <div id="client-step-1" class="p2p-step-panel hidden">
+            <div class="p2p-step-badge">Join Game: Scan Host QR</div>
+            <p class="p2p-instruction">Point camera at the Host device's screen:</p>
+
+            <div id="client-scanner-box" class="scanner-container">
+              <video id="client-scanner-video" playsinline></video>
+              <div class="scanner-reticle"></div>
+            </div>
+
+            <div class="p2p-camera-controls">
+              <button type="button" id="btn-client-scan-offer" class="btn btn-secondary-3d">
+                <i class="fa-solid fa-arrows-rotate"></i> Restart Camera
+              </button>
+            </div>
+
+            <div class="manual-code-row">
+              <input type="text" id="p2p-client-offer-input" placeholder="Or paste Host's Connection code here">
+              <button type="button" id="btn-submit-client-offer" class="btn btn-success-3d">
+                <i class="fa-solid fa-arrow-right"></i> Next
+              </button>
+            </div>
+          </div>
+
+          <!-- CLIENT STEP 2: Show Answer QR to Host -->
+          <div id="client-step-2" class="p2p-step-panel hidden">
+            <div class="p2p-step-badge">Final Step: Show Response to Host</div>
+            <p class="p2p-instruction">Show this <strong>Response QR Code</strong> to the Host to scan:</p>
+            <div class="qr-code-frame" id="client-answer-qr-container">
+              <!-- SVG QR Code is injected here -->
+            </div>
+
+            <details class="p2p-details-fallback">
+              <summary><i class="fa-solid fa-keyboard"></i> Manual Response Code (Copy / Paste Fallback)</summary>
+              <div class="manual-code-row">
+                <input type="text" id="p2p-client-answer-text" readonly onclick="this.select()">
+                <button type="button" id="btn-copy-client-answer" class="btn btn-primary-3d">
+                  <i class="fa-solid fa-copy"></i> Copy
+                </button>
+              </div>
+            </details>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Match Wager Setup -->
+      <div id="match-setup-modal" class="modal-overlay hidden">
+        <div class="modal-content match-setup-box animate-scale-up glass-morphic" role="dialog" aria-modal="true" aria-labelledby="match-setup-title">
+          <div class="modal-header">
+            <h3 id="match-setup-title"><i class="fa-solid fa-coins"></i> Set Match Wager</h3>
+            <button id="btn-match-setup-close" class="drawer-close-btn" aria-label="Close setup"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+          <label id="match-wager-field" class="match-setup-field" for="match-wager-amount">
+            <span>Stake per player <small>(50–10,000 coins)</small></span>
+            <div class="wager-input-wrap"><i class="fa-solid fa-coins"></i><input id="match-wager-amount" type="number" min="50" max="10000" step="50" value="50"></div>
+          </label>
+          <label class="match-setup-field" for="match-player-count">
+            <span>Players</span>
+            <select id="match-player-count">
+              <option value="2">1 vs 1</option>
+              <option value="3">1 vs 1 vs 1</option>
+              <option value="4">1 vs 1 vs 1 vs 1</option>
+            </select>
+          </label>
+          <p id="match-payout-preview" class="match-payout-preview">Winner gets the 100 coin pot.</p>
+          <p id="match-wallet-preview" class="match-wallet-preview"></p>
+          <div class="modal-footer-actions">
+            <button id="btn-match-setup-cancel" class="btn btn-secondary-3d">Cancel</button>
+            <button id="btn-match-setup-confirm" class="btn btn-success-3d">Continue</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Theme Shop -->
+      <div id="theme-shop-modal" class="modal-overlay hidden">
+        <div class="modal-content theme-shop-box animate-scale-up glass-morphic" role="dialog" aria-modal="true" aria-labelledby="theme-shop-title">
+          <div class="modal-header">
+            <div>
+              <h3 id="theme-shop-title"><i class="fa-solid fa-store"></i> Theme Shop</h3>
+              <p class="shop-wallet"><i class="fa-solid fa-coins"></i> <span id="shop-coin-balance">100</span> coins</p>
+            </div>
+            <button id="btn-shop-close" class="drawer-close-btn" aria-label="Close shop"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+          <p class="shop-reward-note">Wager 50–10,000 coins per match. The winner takes the full pot; losing stakes are lost.</p>
+          <p id="shop-admin-note" class="shop-admin-note hidden"><i class="fa-solid fa-shield-halved"></i> Admin test mode: equip any theme without spending coins. Changes stay in this browser profile.</p>
+          <div id="theme-shop-catalog" class="theme-shop-catalog"></div>
+        </div>
+      </div>
+
+      <!-- Custom In-Game Modal Component (Alert & Confirm) -->
+      <div id="custom-game-modal" class="modal-overlay hidden">
+        <div class="modal-content custom-game-modal-box animate-scale-up glass-morphic">
+          <div class="modal-header">
+            <h3 id="custom-modal-title"><i class="fa-solid fa-circle-exclamation"></i> UNO NOTICE</h3>
+          </div>
+          <div class="modal-body">
+            <p id="custom-modal-message">Message goes here...</p>
+          </div>
+          <div class="modal-footer-actions" id="custom-modal-footer">
+            <!-- Dynamically populated buttons -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Slide-out Navigation Menu Drawer -->
+      <div id="game-menu-drawer" class="modal-overlay drawer-overlay hidden">
+        <div class="drawer-content animate-slide-left">
+          <div class="drawer-header">
+            <h3><i class="fa-solid fa-gamepad"></i> Game Menu</h3>
+            <button id="btn-drawer-close" class="drawer-close-btn"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+          <div class="drawer-body">
+            <button id="btn-drawer-resume" class="btn-drawer-item">
+              <i class="fa-solid fa-play"></i> Resume Game
+            </button>
+            <button id="btn-drawer-layout" class="btn-drawer-item">
+              <i class="fa-solid fa-sliders"></i> Customize Layout
+            </button>
+            <button id="btn-drawer-sound" class="btn-drawer-item">
+              <i class="fa-solid fa-volume-high" id="sound-icon"></i> Sound: <span id="sound-status">ON</span>
+            </button>
+            <button id="btn-drawer-exit" class="btn-drawer-item btn-drawer-danger">
+              <i class="fa-solid fa-right-from-bracket"></i> Exit to Lobby / Home
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Customize Layout Settings Modal -->
+      <div id="layout-customizer-modal" class="modal-overlay hidden">
+        <div class="modal-content layout-customizer-box animate-scale-up glass-morphic">
+          <div class="modal-header">
+            <h3><i class="fa-solid fa-sliders"></i> Customize Table & Layout</h3>
+            <button id="btn-layout-close" class="drawer-close-btn"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+          <div class="modal-body">
+            <p class="customizer-subtitle">Adjust parameters in real-time. Changes apply instantly to the game board!</p>
+
+            <div class="customizer-controls">
+              <!-- Board Scale Slider -->
+              <div class="slider-control-group">
+                <div class="slider-label-row">
+                  <label for="slider-board-scale"><i class="fa-solid fa-table-tennis-paddle-ball"></i> Board Scale</label>
+                  <span id="val-board-scale" class="slider-val-badge">1.00x</span>
+                </div>
+                <div class="slider-adjust-row">
+                  <button type="button" class="btn-step-adjust" data-slider="slider-board-scale" data-delta="-0.05" aria-label="Decrease board scale"><i class="fa-solid fa-minus"></i></button>
+                  <input type="range" id="slider-board-scale" min="0.7" max="1.3" step="0.05" value="1.0">
+                  <button type="button" class="btn-step-adjust" data-slider="slider-board-scale" data-delta="0.05" aria-label="Increase board scale"><i class="fa-solid fa-plus"></i></button>
+                </div>
+              </div>
+
+              <!-- Card Size Slider -->
+              <div class="slider-control-group">
+                <div class="slider-label-row">
+                  <label for="slider-card-size"><i class="fa-solid fa-clone"></i> Card Size</label>
+                  <span id="val-card-size" class="slider-val-badge">1.00x</span>
+                </div>
+                <div class="slider-adjust-row">
+                  <button type="button" class="btn-step-adjust" data-slider="slider-card-size" data-delta="-0.05" aria-label="Decrease card size"><i class="fa-solid fa-minus"></i></button>
+                  <input type="range" id="slider-card-size" min="0.7" max="1.4" step="0.05" value="1.0">
+                  <button type="button" class="btn-step-adjust" data-slider="slider-card-size" data-delta="0.05" aria-label="Increase card size"><i class="fa-solid fa-plus"></i></button>
+                </div>
+              </div>
+
+              <!-- Opponents Size Slider -->
+              <div class="slider-control-group">
+                <div class="slider-label-row">
+                  <label for="slider-bot-size"><i class="fa-solid fa-robot"></i> Opponents Size</label>
+                  <span id="val-bot-size" class="slider-val-badge">1.00x</span>
+                </div>
+                <div class="slider-adjust-row">
+                  <button type="button" class="btn-step-adjust" data-slider="slider-bot-size" data-delta="-0.05" aria-label="Decrease opponents size"><i class="fa-solid fa-minus"></i></button>
+                  <input type="range" id="slider-bot-size" min="0.7" max="1.3" step="0.05" value="1.0">
+                  <button type="button" class="btn-step-adjust" data-slider="slider-bot-size" data-delta="0.05" aria-label="Increase opponents size"><i class="fa-solid fa-plus"></i></button>
+                </div>
+              </div>
+
+              <!-- Font Scale Slider -->
+              <div class="slider-control-group">
+                <div class="slider-label-row">
+                  <label for="slider-font-scale"><i class="fa-solid fa-font"></i> Font Scale</label>
+                  <span id="val-font-scale" class="slider-val-badge">1.00x</span>
+                </div>
+                <div class="slider-adjust-row">
+                  <button type="button" class="btn-step-adjust" data-slider="slider-font-scale" data-delta="-0.05" aria-label="Decrease font scale"><i class="fa-solid fa-minus"></i></button>
+                  <input type="range" id="slider-font-scale" min="0.8" max="1.3" step="0.05" value="1.0">
+                  <button type="button" class="btn-step-adjust" data-slider="slider-font-scale" data-delta="0.05" aria-label="Increase font scale"><i class="fa-solid fa-plus"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer-actions">
+            <button id="btn-layout-reset" class="btn btn-secondary-3d">
+              <i class="fa-solid fa-rotate-left"></i> Reset to Default
+            </button>
+            <button id="btn-layout-save" class="btn btn-success-3d">
+              <i class="fa-solid fa-check"></i> Done
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notification Toasts -->
+      <div id="toast-message" class="toast hidden"></div>
+    </div>
+  </div>
+
+  <script src="js/engine/GameEngine.js"></script>
+  <script src="js/engine/BotPlayer.js"></script>
+  <script src="js/engine/WalletDatabase.js"></script>
+  <script src="js/qr/qrcode.js"></script>
+  <script src="js/qr/sdp-compress.js"></script>
+  <script src="js/qr/jsQR.js"></script>
+  <script src="js/qr/qr-scanner.js"></script>
+  <script src="js/local-p2p.js"></script>
+  <script src="js/p2p-signaling-ui.js"></script>
+  <script src="js/theme-catalog.js?v=2"></script>
+  <script src="js/economy.js?v=2"></script>
+  <script src="js/game-effects.js"></script>
+  <script src="js/game.js?v=3.0"></script>
+</body>
+</html>

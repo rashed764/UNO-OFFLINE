@@ -1,0 +1,6 @@
+{
+  "name": "UNO 3D Classic",
+  "description": "UNO 3D Classic - Offline & Local Network Multiplayer Card Game with intelligent AI bots, wallet economy, and 3D card perspective.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

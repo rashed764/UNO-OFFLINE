@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.UNO3DClassic" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/uno_bg</item>
+        <item name="android:statusBarColor">@color/uno_bg</item>
+        <item name="android:navigationBarColor">@color/uno_bg</item>
+    </style>
+    <style name="Theme.MyApplication" parent="Theme.UNO3DClassic" />
+</resources>
