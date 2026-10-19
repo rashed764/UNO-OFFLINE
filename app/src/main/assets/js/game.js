@@ -373,22 +373,35 @@
     const totalCards = cardEls.length;
     if (totalCards === 0) return;
 
-    const cardWidth = parseFloat(getComputedStyle(cardEls[0]).width) || cardEls[0]?.offsetWidth || 64;
+    // Single pre-loop measurement pass to eliminate forced layout thrashing
+    const availableWidth = handContainer.clientWidth || 380;
+    const cardWidth = cardEls[0] ? (parseFloat(cardEls[0].style.width) || cardEls[0].offsetWidth || 64) : 64;
+    const maxUsableWidth = Math.max(0, availableWidth - cardWidth - 12);
+    const cardStep = Math.min(34, Math.max(18, cardWidth * 0.7));
+    const spreadWidth = totalCards > 1
+      ? Math.min((totalCards - 1) * cardStep, maxUsableWidth)
+      : 0;
+    const angleStep = totalCards > 1 ? (35 / (totalCards - 1)) : 0;
+    const xStep = totalCards > 1 ? (spreadWidth / (totalCards - 1)) : 0;
+    const startX = -spreadWidth / 2;
 
-    cardEls.forEach((cardEl, idx) => {
-      const { x: targetX, y: targetY, angle } = getPlayerHandCardPlacement(handContainer, totalCards, idx, cardWidth);
+    // Batch all style mutations without any interleaved DOM reads
+    for (let idx = 0; idx < totalCards; idx++) {
+      const cardEl = cardEls[idx];
+      const targetX = totalCards > 1 ? (startX + idx * xStep) : 0;
+      const angle = totalCards > 1 ? (-17.5 + idx * angleStep) : 0;
+      const targetY = Math.abs(angle) * 0.5;
 
       cardEl.style.setProperty('--x', targetX);
       cardEl.style.setProperty('--y', targetY);
       cardEl.style.setProperty('--angle', angle);
       cardEl.style.setProperty('--index', idx);
       cardEl.style.setProperty('--i', idx);
-      cardEl.style.position = 'absolute';
-      cardEl.style.transformOrigin = 'bottom center';
+
       if (!cardEl.classList.contains('selected')) {
         cardEl.style.transform = `translateX(${targetX}px) translateY(${targetY}px) rotateZ(${angle}deg) scale(1)`;
       }
-    });
+    }
   }
 
   function updateGameScaling() {
@@ -443,7 +456,34 @@
   // HELPER FUNCTIONS (Screen Switcher, Toasts, Modals)
   // ==========================================================================
 
+  function clearAnimationOverlay() {
+    const overlay = document.getElementById('ghost-animation-overlay');
+    if (overlay) {
+      overlay.replaceChildren();
+    }
+    if (window.pendingDiscardFlight) {
+      try {
+        window.pendingDiscardFlight.el?.remove();
+        window.pendingDiscardFlight.flight?.animation?.cancel();
+        window.pendingDiscardFlight.flight?.trail?.remove();
+      } catch (_) {}
+      window.pendingDiscardFlight = null;
+    }
+    if (window.pendingDrawGhost) {
+      try {
+        window.pendingDrawGhost.el?.remove();
+      } catch (_) {}
+      window.pendingDrawGhost = null;
+    }
+    if (window.pendingDrawTwoVisual) {
+      restoreDrawTwoTargetCards(window.pendingDrawTwoVisual);
+    }
+  }
+
   function showScreen(screenId) {
+    if (screenId !== 'game-screen') {
+      clearAnimationOverlay();
+    }
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     const target = document.getElementById(screenId);
     if (target) {
@@ -673,7 +713,8 @@
       roomIdEl.textContent = appState.roomId;
     }
 
-    // Clean initial hand containers and reset counts to 0 during deal phase
+    // Clean initial hand containers, reset counts to 0, and clear lingering animation overlays
+    clearAnimationOverlay();
     const handContainer = document.getElementById('player-cards-fan');
     if (handContainer) handContainer.innerHTML = '';
     ['left', 'top', 'right'].forEach(pos => {
@@ -777,6 +818,7 @@
       ? `${message || `${winnerName} has won the match!`} Admin mode: no coins were spent or awarded.`
       : `${message || `${winnerName} has won the match!`} ${payout ? `You won the ${payout} coin pot!` : `Your ${appState.stake} coin stake was lost.`}`.trim();
     if (modalEl) modalEl.classList.remove('hidden');
+    clearAnimationOverlay();
   });
 
   // ==========================================================================
@@ -1311,49 +1353,96 @@
       }
     }
 
-    // Render active player hand (3D Fan layout)
+    // Render active player hand (3D Fan layout) with Incremental Keyed DOM Reconciliation
     const handContainer = document.getElementById('player-cards-fan');
     if (handContainer) {
       const cardsToRender = state.myHand;
       const handSignature = getHandSignature(cardsToRender);
 
-      // Other players' moves update the whole game snapshot, but do not change
-      // this player's hand. Keep existing card DOM in that case so the hand
-      // does not collapse and fan out again on every opponent move.
-      if (handContainer.dataset.handSignature !== handSignature) {
+      if (handContainer.dataset.handSignature === handSignature) {
+        // Fast path: hand cards are identical, sync selection and just-drawn states without full relayout
+        const existingCards = handContainer.querySelectorAll('.card-3d:not(.draw-flight-card)');
+        existingCards.forEach((cardEl) => {
+          const cardId = cardEl.dataset.cardId;
+          const isSelected = appState.selectedCardId && String(cardId) === String(appState.selectedCardId);
+          cardEl.classList.toggle('selected', Boolean(isSelected));
+          const isJustDrawn = state.lastDrawnCardId && String(cardId) === String(state.lastDrawnCardId);
+          cardEl.classList.toggle('just-drawn', Boolean(isJustDrawn));
+        });
+      } else {
         handContainer.dataset.handSignature = handSignature;
-        handContainer.classList.add('draw-layout-sync');
-        handContainer.innerHTML = '';
-        const totalCards = cardsToRender.length;
-        const renderedCards = [];
+
+        // Build a map of existing card DOM elements by cardId
+        const existingCardMap = new Map();
+        Array.from(handContainer.children).forEach(child => {
+          if (child.classList?.contains('card-3d') && !child.classList.contains('draw-flight-card') && child.dataset?.cardId) {
+            existingCardMap.set(child.dataset.cardId, child);
+          }
+        });
+
+        const retainedCardIds = new Set();
+        const activeTheme = document.documentElement.dataset.deckTheme;
 
         cardsToRender.forEach((card, idx) => {
           if (!card) return;
-          const isDrawReveal = window.drawRevealCardId != null && String(card.id) === String(window.drawRevealCardId);
-          const cardEl = isDrawReveal
-            ? createDrawRevealCardElement(card, idx)
-            : create3DCardElement(card, idx, 0, false);
-          cardEl.dataset.cardId = String(card.id);
+          const cardIdStr = String(card.id);
+          const isDrawReveal = window.drawRevealCardId != null && cardIdStr === String(window.drawRevealCardId);
+          let cardEl = existingCardMap.get(cardIdStr);
 
-          if (appState.selectedCardId && String(card.id) === String(appState.selectedCardId)) {
+          // If card element doesn't exist, has theme mismatch, or is a draw-reveal card, create it
+          const needsRecreate = !cardEl || isDrawReveal || cardEl.dataset.theme !== activeTheme;
+
+          if (needsRecreate) {
+            const newEl = isDrawReveal
+              ? createDrawRevealCardElement(card, idx)
+              : create3DCardElement(card, idx, 0, false);
+            newEl.dataset.cardId = cardIdStr;
+            newEl.dataset.theme = activeTheme || 'classic';
+            newEl._cardIndex = idx;
+            newEl.addEventListener('click', () => {
+              handleCardClick(card, newEl, newEl._cardIndex ?? idx);
+            });
+            if (cardEl && cardEl.parentNode === handContainer) {
+              cardEl.replaceWith(newEl);
+            } else {
+              handContainer.appendChild(newEl);
+            }
+            cardEl = newEl;
+          } else {
+            // Reused existing element: update its stored index for click handling
+            cardEl._cardIndex = idx;
+            if (handContainer.children[idx] !== cardEl) {
+              handContainer.insertBefore(cardEl, handContainer.children[idx] || null);
+            }
+          }
+
+          retainedCardIds.add(cardIdStr);
+
+          // Update selection state
+          if (appState.selectedCardId && cardIdStr === String(appState.selectedCardId)) {
             cardEl.classList.add('selected');
+          } else {
+            cardEl.classList.remove('selected');
           }
 
-          if (!isDrawReveal && state.lastDrawnCardId && String(card.id) === String(state.lastDrawnCardId)) {
+          // Update just-drawn state
+          if (!isDrawReveal && state.lastDrawnCardId && cardIdStr === String(state.lastDrawnCardId)) {
             cardEl.classList.add('just-drawn');
+          } else {
+            cardEl.classList.remove('just-drawn');
           }
-
-          cardEl.addEventListener('click', () => {
-            handleCardClick(card, cardEl, idx);
-          });
-
-          handContainer.appendChild(cardEl);
-          renderedCards.push(cardEl);
         });
+
+        // Clean up any cards no longer in the player's hand
+        existingCardMap.forEach((el, id) => {
+          if (!retainedCardIds.has(id)) {
+            el.remove();
+          }
+        });
+
         if (window.drawRevealCardId != null) window.drawRevealCardId = null;
 
         relayoutPlayerHand(handContainer);
-        requestAnimationFrame(() => handContainer.classList.remove('draw-layout-sync'));
       }
     }
   }
@@ -1755,14 +1844,14 @@
       const rect = pile.getBoundingClientRect();
       const x = rect.left + rect.width / 2;
       const y = rect.top + rect.height / 2;
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < 2; i++) {
         const ring = document.createElement('div');
         ring.className = 'reverse-impact-ring';
         ring.style.left = `${x}px`;
         ring.style.top = `${y}px`;
-        ring.style.setProperty('--ring-delay', `${i * 110}ms`);
+        ring.style.setProperty('--ring-delay', `${i * 120}ms`);
         overlay.appendChild(ring);
-        setTimeout(() => ring.remove(), 1250);
+        setTimeout(() => { if (ring.parentNode) ring.remove(); }, 1250);
       }
 
       const emblem = document.createElement('div');
@@ -1771,18 +1860,19 @@
       emblem.style.left = `${x}px`;
       emblem.style.top = `${y}px`;
       overlay.appendChild(emblem);
-      setTimeout(() => emblem.remove(), 1450);
+      setTimeout(() => { if (emblem.parentNode) emblem.remove(); }, 1450);
 
-      for (let i = 0; i < 18; i++) {
+      // Lightweight 8-point radial burst with zero layout thrashing
+      for (let i = 0; i < 8; i++) {
         const spark = document.createElement('i');
         spark.className = 'reverse-impact-spark';
         spark.style.left = `${x}px`;
         spark.style.top = `${y}px`;
-        spark.style.setProperty('--spark-angle', `${i * 20 + (Math.random() * 8 - 4)}deg`);
-        spark.style.setProperty('--spark-distance', `${45 + Math.random() * 125}px`);
-        spark.style.setProperty('--spark-delay', `${Math.random() * 90}ms`);
+        spark.style.setProperty('--spark-angle', `${i * 45}deg`);
+        spark.style.setProperty('--spark-distance', `${50 + (i % 2) * 40}px`);
+        spark.style.setProperty('--spark-delay', `${(i % 3) * 30}ms`);
         overlay.appendChild(spark);
-        setTimeout(() => spark.remove(), 850);
+        setTimeout(() => { if (spark.parentNode) spark.remove(); }, 850);
       }
     }
 
@@ -1825,8 +1915,9 @@
       ring.style.left = `${rect.left + rect.width / 2}px`;
       ring.style.top = `${rect.top + rect.height / 2}px`;
       ring.style.setProperty('--wild-chosen-color', color || '#ff3038');
-      document.body.appendChild(ring);
-      setTimeout(() => ring.remove(), 600);
+      const overlay = document.getElementById('ghost-animation-overlay');
+      (overlay || document.body).appendChild(ring);
+      setTimeout(() => { if (ring.parentNode) ring.remove(); }, 600);
     }
     const table = document.querySelector('.table-3d-plate');
     const atmosphere = document.querySelector('.app-background-glow');
@@ -2101,24 +2192,8 @@
   }
 
   function refanHandAfterDiscard(hand) {
-    const cards = Array.from(hand.children).filter(el => el.classList?.contains('card-3d'));
-    const total = cards.length;
-    const scale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--board-scale')) || 1;
-    const cardWidth = cards[0] ? cards[0].offsetWidth * scale : 64;
-    const availableWidth = hand.clientWidth || 380;
-    const spread = total > 1
-      ? Math.min(380, total * 40, Math.max(0, availableWidth - cardWidth - 16))
-      : 0;
-    cards.forEach((cardEl, idx) => {
-      const angle = total > 1 ? -20 + idx * (40 / (total - 1)) : 0;
-      const x = total > 1 ? -spread / 2 + idx * (spread / (total - 1)) : 0;
-      const y = Math.abs(angle) * 0.8;
-      cardEl.style.setProperty('--x', x);
-      cardEl.style.setProperty('--y', y);
-      cardEl.style.setProperty('--angle', angle);
-      cardEl.style.setProperty('--index', idx);
-      cardEl.style.transform = `translateX(${x}px) translateY(${y}px) rotateZ(${angle}deg) scale(1)`;
-    });
+    if (!hand) return;
+    relayoutPlayerHand(hand);
   }
 
   function finishDiscardFlight(pending) {
@@ -2612,12 +2687,16 @@
 
   function cancelDiscardFlight() {
     const pending = window.pendingDiscardFlight;
-    if (!pending) return;
-    pending.el.remove();
-    pending.flight?.animation.cancel();
-    pending.flight?.trail.remove();
-    window.pendingDiscardFlight = null;
-    if (pending.hand) pending.hand.dataset.handSignature = '';
+    if (pending) {
+      try {
+        pending.el?.remove();
+        pending.flight?.animation?.cancel();
+        pending.flight?.trail?.remove();
+      } catch (_) {}
+      window.pendingDiscardFlight = null;
+      if (pending.hand) pending.hand.dataset.handSignature = '';
+    }
+    clearAnimationOverlay();
     if (appState.latestServerState) renderGame(appState.latestServerState);
   }
 

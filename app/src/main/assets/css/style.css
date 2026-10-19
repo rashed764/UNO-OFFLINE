@@ -1264,6 +1264,7 @@ input[type="text"]:focus {
 .opp-cards-preview .card-3d.fanning-transition {
   transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
   transition-delay: calc(var(--i, 0) * 0.04s) !important;
+  will-change: transform;
 }
 
 .player-cards-fan-layout .card-3d:hover {
@@ -2165,12 +2166,12 @@ input[type="range"]::-moz-range-thumb {
 /* Skip power-card impact effects share the discard ghost overlay so they stay
    aligned with the table at every viewport size without changing game layout. */
 .discard-flight-ghost.power-card-glow {
-  filter: drop-shadow(0 0 7px #55fff3) drop-shadow(0 0 17px #16d9ff);
+  box-shadow: 0 0 16px #16d9ff, inset 0 0 10px #55fff3;
   animation: skip-power-aura 450ms ease-in-out infinite alternate;
 }
 @keyframes skip-power-aura {
-  from { filter: drop-shadow(0 0 5px #55fff3) drop-shadow(0 0 12px #16d9ff); }
-  to { filter: drop-shadow(0 0 11px #b7ffff) drop-shadow(0 0 25px #16d9ff); }
+  from { box-shadow: 0 0 12px #16d9ff, inset 0 0 8px #55fff3; }
+  to { box-shadow: 0 0 24px #16d9ff, 0 0 40px #55fff3, inset 0 0 14px #b7ffff; }
 }
 .skip-impact-shockwave {
   position: fixed;
@@ -2240,8 +2241,7 @@ input[type="range"]::-moz-range-thumb {
 
 /* Reverse card: curved energy flight, impact rings, orbit particles, and player wave. */
 .discard-flight-ghost.reverse-flight-ghost {
-  filter: drop-shadow(0 0 8px #8bfaff) drop-shadow(0 0 20px #21cfff);
-  box-shadow: 0 0 22px rgba(50,231,255,.7);
+  box-shadow: 0 0 24px #21cfff, inset 0 0 12px #8bfaff;
 }
 .reverse-flight-trail {
   position: absolute;
@@ -2277,7 +2277,7 @@ input[type="range"]::-moz-range-thumb {
   height: 18px;
   border-radius: 100%;
   background: linear-gradient(#fff, #85f8ff 48%, transparent);
-  box-shadow: 0 0 9px #56edff, 0 0 18px #26bfff;
+  box-shadow: 0 0 8px #56edff;
   transform: translate(-50%,-50%) rotate(var(--spark-angle)) translateY(0) scale(.2);
   animation: reverse-spark-burst 680ms cubic-bezier(.15,.72,.25,1) var(--spark-delay) forwards;
 }
@@ -2423,8 +2423,8 @@ input[type="range"]::-moz-range-thumb {
 .draw2-spectral-corner-bottom { top: auto; left: auto; right: 7px; bottom: 6px; transform: rotate(180deg); }
 .draw2-spectral-hover { animation: draw2-spectral-float 260ms ease-in-out infinite alternate; }
 @keyframes draw2-spectral-float {
-  from { translate: 0 -2px; filter: drop-shadow(0 0 8px #ed7aff); }
-  to { translate: 0 -9px; filter: drop-shadow(0 0 18px #64f8ff); }
+  from { transform: translateY(0); box-shadow: 0 0 10px #fff, 0 0 22px #dc43ff; }
+  to { transform: translateY(-7px); box-shadow: 0 0 14px #fff, 0 0 32px #64f8ff; }
 }
 .draw2-plasma-trail {
   position: absolute;
@@ -2549,8 +2549,8 @@ input[type="range"]::-moz-range-thumb {
 }
 .draw4-spectral-card.draw2-spectral-hover { animation: draw4-spectral-charge 260ms ease-in-out infinite alternate; }
 @keyframes draw4-spectral-charge {
-  from { filter: drop-shadow(0 0 7px #ed70ff); }
-  to { filter: drop-shadow(0 0 17px #fff17a); }
+  from { transform: translateY(0); box-shadow: 0 0 12px #fff, 0 0 24px #e843ff; }
+  to { transform: translateY(-8px); box-shadow: 0 0 16px #fff, 0 0 36px #fff17a; }
 }
 .draw4-plasma-trail {
   position: absolute;
