@@ -425,6 +425,16 @@ input[type="text"]:focus {
   box-shadow: 0 0 15px var(--uno-yellow);
 }
 
+.btn-settings-toggle:hover {
+  background: linear-gradient(135deg, rgba(170, 0, 255, 0.18), transparent);
+  border-color: #d500f9;
+}
+.btn-settings-toggle:hover .btn-icon {
+  background: #aa00ff;
+  color: #fff;
+  box-shadow: 0 0 16px rgba(213, 0, 249, 0.7);
+}
+
 /* Join Box */
 .join-box {
   margin-top: 15px;
@@ -1301,6 +1311,8 @@ input[type="text"]:focus {
   border: 1px solid rgba(255, 255, 255, 0.15);
   width: 380px;
   max-width: 90vw;
+  max-height: 88vh;
+  overflow-y: auto;
   border-radius: var(--radius-lg);
   display: flex;
   flex-direction: column;
@@ -1380,6 +1392,167 @@ input[type="text"]:focus {
 .btn-drawer-danger:hover {
   background: var(--uno-red);
   color: #fff;
+}
+
+/* Sound FX Debugger in Game Drawer */
+.drawer-debug-card {
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.btn-drawer-debug {
+  background: rgba(0, 210, 255, 0.07);
+  border: 1px solid rgba(0, 210, 255, 0.22);
+  color: #fff;
+}
+
+.btn-drawer-debug:hover {
+  background: rgba(0, 210, 255, 0.14);
+  border-color: rgba(0, 210, 255, 0.4);
+}
+
+.debug-chevron {
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  font-size: 0.9rem;
+  color: #00d2ff;
+}
+
+.debug-chevron.open {
+  transform: rotate(180deg);
+}
+
+.sound-debug-panel {
+  padding: 10px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: fadeIn 0.2s ease;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.sound-debug-panel.hidden {
+  display: none !important;
+}
+
+.sound-debug-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.sound-debug-tag {
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #00d2ff;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.sound-debug-hint {
+  font-size: 0.74rem;
+  color: rgba(255, 255, 255, 0.68);
+  margin: 0;
+  line-height: 1.3;
+}
+
+.btn-debug-mini {
+  background: linear-gradient(135deg, #00d2ff, #0077fe);
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 5px 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 6px rgba(0, 119, 254, 0.35);
+}
+
+.btn-debug-mini:active {
+  transform: scale(0.94);
+}
+
+.sound-debug-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.btn-sound-test {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 8px;
+  color: #fff;
+  padding: 8px 6px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 3px;
+  min-height: 54px;
+  justify-content: center;
+  transition: all 0.15s ease;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-sound-test:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(0, 210, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.btn-sound-test:active,
+.btn-sound-test.pulse-active {
+  background: rgba(0, 210, 255, 0.28) !important;
+  border-color: #00d2ff !important;
+  transform: scale(0.96);
+  box-shadow: 0 0 12px rgba(0, 210, 255, 0.5);
+}
+
+.btn-sound-test i {
+  font-size: 1.05rem;
+  color: #f7b731;
+}
+
+.btn-sound-test .sound-name {
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #fff;
+}
+
+.btn-sound-test .sound-spec {
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 500;
+  line-height: 1;
+}
+
+.sound-debug-status {
+  font-size: 0.74rem;
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(0, 0, 0, 0.4);
+  padding: 7px 10px;
+  border-radius: 6px;
+  border-left: 3px solid #00d2ff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  line-height: 1.3;
 }
 
 @keyframes slideInDrawer {
@@ -1850,19 +2023,217 @@ input[type="text"]:focus {
    Customize Layout Settings Modal & Figma-to-Code Token Variables
    ========================================================================== */
 .layout-customizer-box {
-  background: rgba(20, 20, 35, 0.82) !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(20, 20, 35, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   border-radius: var(--radius-lg);
-  padding: 24px 30px;
-  width: 90%;
-  max-width: 520px;
-  box-shadow: 0 30px 70px rgba(0,0,0,0.7);
+  padding: 22px 26px;
+  width: 92%;
+  max-width: 540px;
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: 0 30px 70px rgba(0,0,0,0.85);
   color: #fff;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
+}
+
+/* Settings Modal Header & Tab Bar */
+.settings-modal-header {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 12px;
+}
+
+.settings-modal-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.settings-modal-title-row h3 {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #fff;
+}
+
+.settings-tab-bar {
+  display: flex;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  gap: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.btn-settings-tab {
+  flex: 1;
+  padding: 9px 12px;
+  border: none;
+  background: transparent;
+  color: #a5a5bb;
+  font-size: 0.92rem;
+  font-weight: 700;
+  border-radius: calc(var(--radius-md) - 2px);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-settings-tab.active {
+  background: linear-gradient(135deg, rgba(0, 102, 255, 0.85), rgba(170, 0, 255, 0.85));
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(0, 102, 255, 0.4);
+}
+
+.btn-settings-tab:hover:not(.active) {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.settings-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.settings-tab-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Audio Control Cards */
+.audio-control-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color 0.2s ease;
+}
+
+.audio-control-card:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.audio-control-card.master-card {
+  background: linear-gradient(135deg, rgba(0, 102, 255, 0.12), rgba(170, 0, 255, 0.08));
+  border-color: rgba(0, 102, 255, 0.35);
+}
+
+.audio-control-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.audio-label-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.audio-icon-main {
+  font-size: 1.35rem;
+  width: 28px;
+  text-align: center;
+  color: #00d2ff;
+}
+
+.audio-title {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #f0f0f8;
+  display: block;
+}
+
+.audio-sub {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #9c9cb2;
+  display: block;
+}
+
+/* Pill Toggle Switch */
+.btn-pill-toggle {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #9c9cb2;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 60px;
+  text-align: center;
+}
+
+.btn-pill-toggle.active {
+  background: linear-gradient(135deg, #00c853, #00e676);
+  border-color: #00e676;
+  color: #0a2512;
+  box-shadow: 0 0 12px rgba(0, 230, 118, 0.5);
+}
+
+.audio-slider-group {
+  margin-top: 2px;
+  background: rgba(0, 0, 0, 0.25);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+/* SFX Test Section inside Settings */
+.settings-sfx-test-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.12);
+}
+
+.sfx-test-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #00d2ff;
+}
+
+.compact-grid {
+  grid-template-columns: repeat(4, 1fr) !important;
+  gap: 6px !important;
+}
+
+.compact-grid .btn-sound-test {
+  padding: 6px 4px !important;
+  font-size: 0.78rem !important;
+}
+
+.compact-grid .btn-sound-test i {
+  font-size: 0.9rem !important;
+}
+
+.compact-grid .sound-name {
+  font-size: 0.74rem !important;
+  font-weight: 700 !important;
 }
 
 .customizer-subtitle {
@@ -3209,6 +3580,7 @@ input[type="range"]::-moz-range-thumb {
   #menu-screen .btn-premium .btn-icon { width: 29px; height: 29px; flex-basis: 29px; font-size: .9rem; }
   #menu-screen .btn-premium .btn-title { font-size: .78rem; }
   #menu-screen .btn-premium .btn-desc { font-size: .62rem; }
+  #menu-screen .btn-settings-toggle,
   #menu-screen .btn-layout-toggle,
   #menu-screen .join-box { grid-column: 1 / -1; }
   #menu-screen .menu-card-decor { opacity: .16; }

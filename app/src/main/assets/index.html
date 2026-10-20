@@ -83,11 +83,11 @@
                 </div>
               </button>
 
-              <button id="btn-customize-layout" class="btn-premium btn-layout-toggle">
-                <div class="btn-icon"><i class="fa-solid fa-sliders"></i></div>
+              <button id="btn-main-settings" class="btn-premium btn-settings-toggle">
+                <div class="btn-icon"><i class="fa-solid fa-gear"></i></div>
                 <div class="btn-info">
-                  <span class="btn-title">Customize Layout</span>
-                  <span class="btn-desc">Table scale, cards & font size</span>
+                  <span class="btn-title">Settings & Audio</span>
+                  <span class="btn-desc">BGM, Sound FX & Layout Controls</span>
                 </div>
               </button>
 
@@ -471,12 +471,82 @@
             <button id="btn-drawer-resume" class="btn-drawer-item">
               <i class="fa-solid fa-play"></i> Resume Game
             </button>
+            <button id="btn-drawer-settings" class="btn-drawer-item">
+              <i class="fa-solid fa-gear"></i> Game Settings & Audio
+            </button>
             <button id="btn-drawer-layout" class="btn-drawer-item">
               <i class="fa-solid fa-sliders"></i> Customize Layout
             </button>
             <button id="btn-drawer-sound" class="btn-drawer-item">
               <i class="fa-solid fa-volume-high" id="sound-icon"></i> Sound: <span id="sound-status">ON</span>
             </button>
+            <button id="btn-drawer-bgm" class="btn-drawer-item">
+              <i class="fa-solid fa-music" id="drawer-bgm-icon"></i> Music: <span id="drawer-bgm-status">ON</span>
+            </button>
+
+            <!-- Sound FX Debugger Menu for Testing Audio Balance -->
+            <div class="drawer-debug-card">
+              <button id="btn-toggle-sound-debug" class="btn-drawer-item btn-drawer-debug" type="button" aria-expanded="false" aria-controls="sound-debug-panel">
+                <i class="fa-solid fa-wave-square" style="color: #00d2ff;"></i>
+                <span style="flex: 1;">Sound FX Debugger</span>
+                <i id="sound-debug-chevron" class="fa-solid fa-chevron-down debug-chevron"></i>
+              </button>
+              <div id="sound-debug-panel" class="sound-debug-panel hidden">
+                <div class="sound-debug-header-row">
+                  <span class="sound-debug-tag"><i class="fa-solid fa-vial"></i> Synth Audio Balance</span>
+                  <button id="btn-test-all-sounds" class="btn-debug-mini" type="button" title="Play all 8 sounds in sequence">
+                    <i class="fa-solid fa-play"></i> Test All
+                  </button>
+                </div>
+                <p class="sound-debug-hint">Tap each sound to verify tone balance & loudness:</p>
+                <div class="sound-debug-grid">
+                  <button type="button" class="btn-sound-test" data-sound="playCardPlay" data-label="Card Play">
+                    <i class="fa-solid fa-clone"></i>
+                    <span class="sound-name">Card Play</span>
+                    <span class="sound-spec">540→240Hz blip</span>
+                  </button>
+                  <button type="button" class="btn-sound-test" data-sound="playCardDraw" data-label="Card Draw">
+                    <i class="fa-solid fa-inbox"></i>
+                    <span class="sound-name">Card Draw</span>
+                    <span class="sound-spec">280→740Hz glide</span>
+                  </button>
+                  <button type="button" class="btn-sound-test" data-sound="playShuffle" data-label="Shuffle Deck">
+                    <i class="fa-solid fa-shuffle"></i>
+                    <span class="sound-name">Shuffle</span>
+                    <span class="sound-spec">4-tone flutter</span>
+                  </button>
+                  <button type="button" class="btn-sound-test" data-sound="playSkip" data-label="Skip Turn">
+                    <i class="fa-solid fa-ban"></i>
+                    <span class="sound-name">Skip</span>
+                    <span class="sound-spec">Descending zap</span>
+                  </button>
+                  <button type="button" class="btn-sound-test" data-sound="playReverse" data-label="Reverse">
+                    <i class="fa-solid fa-arrows-rotate"></i>
+                    <span class="sound-name">Reverse</span>
+                    <span class="sound-spec">Orbital warp</span>
+                  </button>
+                  <button type="button" class="btn-sound-test" data-sound="playDrawTwo" data-label="Draw Two">
+                    <i class="fa-solid fa-plus"></i>
+                    <span class="sound-name">Draw Two</span>
+                    <span class="sound-spec">Dual-pulse alert</span>
+                  </button>
+                  <button type="button" class="btn-sound-test" data-sound="playWild" data-label="Wild Card">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    <span class="sound-name">Wild Card</span>
+                    <span class="sound-spec">Ascending arpeggio</span>
+                  </button>
+                  <button type="button" class="btn-sound-test" data-sound="playWildDrawFour" data-label="Wild Draw 4">
+                    <i class="fa-solid fa-bolt"></i>
+                    <span class="sound-name">Wild Draw 4</span>
+                    <span class="sound-spec">Siren slam & sub</span>
+                  </button>
+                </div>
+                <div id="sound-debug-status" class="sound-debug-status">
+                  <i class="fa-solid fa-circle-info"></i> Ready to test sound balance
+                </div>
+              </div>
+            </div>
+
             <button id="btn-drawer-exit" class="btn-drawer-item btn-drawer-danger">
               <i class="fa-solid fa-right-from-bracket"></i> Exit to Lobby / Home
             </button>
@@ -484,75 +554,210 @@
         </div>
       </div>
 
-      <!-- Customize Layout Settings Modal -->
+      <!-- Settings & Customize Layout Modal -->
       <div id="layout-customizer-modal" class="modal-overlay hidden">
         <div class="modal-content layout-customizer-box animate-scale-up glass-morphic">
-          <div class="modal-header">
-            <h3><i class="fa-solid fa-sliders"></i> Customize Table & Layout</h3>
-            <button id="btn-layout-close" class="drawer-close-btn"><i class="fa-solid fa-xmark"></i></button>
+          <div class="modal-header settings-modal-header">
+            <div class="settings-modal-title-row">
+              <h3><i class="fa-solid fa-gear"></i> Game Settings</h3>
+              <button id="btn-layout-close" class="drawer-close-btn" aria-label="Close Settings"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <!-- Tab Switcher -->
+            <div class="settings-tab-bar" role="tablist">
+              <button type="button" id="tab-btn-sound" class="btn-settings-tab active" role="tab" aria-selected="true" aria-controls="settings-tab-sound">
+                <i class="fa-solid fa-volume-high"></i> Sound & Music
+              </button>
+              <button type="button" id="tab-btn-layout" class="btn-settings-tab" role="tab" aria-selected="false" aria-controls="settings-tab-layout">
+                <i class="fa-solid fa-sliders"></i> Customize Layout
+              </button>
+            </div>
           </div>
-          <div class="modal-body">
-            <p class="customizer-subtitle">Adjust parameters in real-time. Changes apply instantly to the game board!</p>
 
-            <div class="customizer-controls">
-              <!-- Board Scale Slider -->
-              <div class="slider-control-group">
-                <div class="slider-label-row">
-                  <label for="slider-board-scale"><i class="fa-solid fa-table-tennis-paddle-ball"></i> Board Scale</label>
-                  <span id="val-board-scale" class="slider-val-badge">1.00x</span>
-                </div>
-                <div class="slider-adjust-row">
-                  <button type="button" class="btn-step-adjust" data-slider="slider-board-scale" data-delta="-0.05" aria-label="Decrease board scale"><i class="fa-solid fa-minus"></i></button>
-                  <input type="range" id="slider-board-scale" min="0.7" max="1.3" step="0.05" value="1.0">
-                  <button type="button" class="btn-step-adjust" data-slider="slider-board-scale" data-delta="0.05" aria-label="Increase board scale"><i class="fa-solid fa-plus"></i></button>
+          <div class="modal-body settings-modal-body">
+            <!-- TAB 1: Sound Control & BG Music -->
+            <div id="settings-tab-sound" class="settings-tab-pane">
+              <!-- Master Sound Card -->
+              <div class="audio-control-card master-card">
+                <div class="audio-control-header">
+                  <div class="audio-label-group">
+                    <i class="fa-solid fa-volume-high audio-icon-main" id="settings-master-icon"></i>
+                    <div>
+                      <span class="audio-title">Master Sound</span>
+                      <span class="audio-sub">Master switch for all game audio</span>
+                    </div>
+                  </div>
+                  <button type="button" id="btn-toggle-master-sound" class="btn-pill-toggle active">
+                    <span id="label-master-sound">ON</span>
+                  </button>
                 </div>
               </div>
 
-              <!-- Card Size Slider -->
-              <div class="slider-control-group">
-                <div class="slider-label-row">
-                  <label for="slider-card-size"><i class="fa-solid fa-clone"></i> Card Size</label>
-                  <span id="val-card-size" class="slider-val-badge">1.00x</span>
+              <!-- Background Music (BGM) Card -->
+              <div class="audio-control-card">
+                <div class="audio-control-header">
+                  <div class="audio-label-group">
+                    <i class="fa-solid fa-music audio-icon-main" style="color: #ff007f;"></i>
+                    <div>
+                      <span class="audio-title">Background Music (BGM)</span>
+                      <span class="audio-sub"><i class="fa-solid fa-compact-disc fa-spin"></i> Arcade Synthwave Groove (116 BPM)</span>
+                    </div>
+                  </div>
+                  <button type="button" id="btn-toggle-bgm" class="btn-pill-toggle active">
+                    <span id="label-bgm-status">ON</span>
+                  </button>
                 </div>
-                <div class="slider-adjust-row">
-                  <button type="button" class="btn-step-adjust" data-slider="slider-card-size" data-delta="-0.05" aria-label="Decrease card size"><i class="fa-solid fa-minus"></i></button>
-                  <input type="range" id="slider-card-size" min="0.7" max="1.4" step="0.05" value="1.0">
-                  <button type="button" class="btn-step-adjust" data-slider="slider-card-size" data-delta="0.05" aria-label="Increase card size"><i class="fa-solid fa-plus"></i></button>
+                <div class="slider-control-group audio-slider-group">
+                  <div class="slider-label-row">
+                    <label for="slider-bgm-volume"><i class="fa-solid fa-sliders"></i> Music Volume</label>
+                    <span id="val-bgm-volume" class="slider-val-badge">50%</span>
+                  </div>
+                  <div class="slider-adjust-row">
+                    <button type="button" class="btn-step-adjust" data-slider="slider-bgm-volume" data-delta="-5" aria-label="Decrease music volume"><i class="fa-solid fa-minus"></i></button>
+                    <input type="range" id="slider-bgm-volume" min="0" max="100" step="5" value="50">
+                    <button type="button" class="btn-step-adjust" data-slider="slider-bgm-volume" data-delta="5" aria-label="Increase music volume"><i class="fa-solid fa-plus"></i></button>
+                  </div>
                 </div>
               </div>
 
-              <!-- Opponents Size Slider -->
-              <div class="slider-control-group">
-                <div class="slider-label-row">
-                  <label for="slider-bot-size"><i class="fa-solid fa-robot"></i> Opponents Size</label>
-                  <span id="val-bot-size" class="slider-val-badge">1.00x</span>
+              <!-- Sound Effects (SFX) Card -->
+              <div class="audio-control-card">
+                <div class="audio-control-header">
+                  <div class="audio-label-group">
+                    <i class="fa-solid fa-bolt audio-icon-main" style="color: #00d2ff;"></i>
+                    <div>
+                      <span class="audio-title">Sound Effects (SFX)</span>
+                      <span class="audio-sub">Boosted arcade card, powers & alert audio</span>
+                    </div>
+                  </div>
+                  <button type="button" id="btn-toggle-sfx" class="btn-pill-toggle active">
+                    <span id="label-sfx-status">ON</span>
+                  </button>
                 </div>
-                <div class="slider-adjust-row">
-                  <button type="button" class="btn-step-adjust" data-slider="slider-bot-size" data-delta="-0.05" aria-label="Decrease opponents size"><i class="fa-solid fa-minus"></i></button>
-                  <input type="range" id="slider-bot-size" min="0.7" max="1.3" step="0.05" value="1.0">
-                  <button type="button" class="btn-step-adjust" data-slider="slider-bot-size" data-delta="0.05" aria-label="Increase opponents size"><i class="fa-solid fa-plus"></i></button>
+                <div class="slider-control-group audio-slider-group">
+                  <div class="slider-label-row">
+                    <label for="slider-sfx-volume"><i class="fa-solid fa-sliders"></i> SFX Volume (Boosted)</label>
+                    <span id="val-sfx-volume" class="slider-val-badge">95%</span>
+                  </div>
+                  <div class="slider-adjust-row">
+                    <button type="button" class="btn-step-adjust" data-slider="slider-sfx-volume" data-delta="-5" aria-label="Decrease SFX volume"><i class="fa-solid fa-minus"></i></button>
+                    <input type="range" id="slider-sfx-volume" min="0" max="100" step="5" value="95">
+                    <button type="button" class="btn-step-adjust" data-slider="slider-sfx-volume" data-delta="5" aria-label="Increase SFX volume"><i class="fa-solid fa-plus"></i></button>
+                  </div>
+                </div>
+
+                <!-- Quick SFX Audition inside settings -->
+                <div class="settings-sfx-test-section">
+                  <div class="sfx-test-header-row">
+                    <span><i class="fa-solid fa-headphones"></i> Audition Boosted Sound Effects</span>
+                    <button type="button" id="btn-settings-test-all" class="btn-debug-mini" title="Play all sounds in sequence">
+                      <i class="fa-solid fa-play"></i> Test All
+                    </button>
+                  </div>
+                  <div class="sound-debug-grid compact-grid">
+                    <button type="button" class="btn-sound-test" data-sound="playCardPlay" data-label="Card Play">
+                      <i class="fa-solid fa-clone"></i>
+                      <span class="sound-name">Play</span>
+                    </button>
+                    <button type="button" class="btn-sound-test" data-sound="playCardDraw" data-label="Card Draw">
+                      <i class="fa-solid fa-inbox"></i>
+                      <span class="sound-name">Draw</span>
+                    </button>
+                    <button type="button" class="btn-sound-test" data-sound="playShuffle" data-label="Shuffle Deck">
+                      <i class="fa-solid fa-shuffle"></i>
+                      <span class="sound-name">Shuffle</span>
+                    </button>
+                    <button type="button" class="btn-sound-test" data-sound="playSkip" data-label="Skip Turn">
+                      <i class="fa-solid fa-ban"></i>
+                      <span class="sound-name">Skip</span>
+                    </button>
+                    <button type="button" class="btn-sound-test" data-sound="playReverse" data-label="Reverse">
+                      <i class="fa-solid fa-arrows-rotate"></i>
+                      <span class="sound-name">Reverse</span>
+                    </button>
+                    <button type="button" class="btn-sound-test" data-sound="playDrawTwo" data-label="Draw Two">
+                      <i class="fa-solid fa-plus"></i>
+                      <span class="sound-name">Draw 2</span>
+                    </button>
+                    <button type="button" class="btn-sound-test" data-sound="playWild" data-label="Wild Card">
+                      <i class="fa-solid fa-wand-magic-sparkles"></i>
+                      <span class="sound-name">Wild</span>
+                    </button>
+                    <button type="button" class="btn-sound-test" data-sound="playWildDrawFour" data-label="Wild Draw 4">
+                      <i class="fa-solid fa-bolt"></i>
+                      <span class="sound-name">Draw 4</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- TAB 2: Customize Layout -->
+            <div id="settings-tab-layout" class="settings-tab-pane hidden">
+              <p class="customizer-subtitle">Adjust parameters in real-time. Changes apply instantly to the game board!</p>
+
+              <div class="customizer-controls">
+                <!-- Board Scale Slider -->
+                <div class="slider-control-group">
+                  <div class="slider-label-row">
+                    <label for="slider-board-scale"><i class="fa-solid fa-table-tennis-paddle-ball"></i> Board Scale</label>
+                    <span id="val-board-scale" class="slider-val-badge">1.00x</span>
+                  </div>
+                  <div class="slider-adjust-row">
+                    <button type="button" class="btn-step-adjust" data-slider="slider-board-scale" data-delta="-0.05" aria-label="Decrease board scale"><i class="fa-solid fa-minus"></i></button>
+                    <input type="range" id="slider-board-scale" min="0.7" max="1.3" step="0.05" value="1.0">
+                    <button type="button" class="btn-step-adjust" data-slider="slider-board-scale" data-delta="0.05" aria-label="Increase board scale"><i class="fa-solid fa-plus"></i></button>
+                  </div>
+                </div>
+
+                <!-- Card Size Slider -->
+                <div class="slider-control-group">
+                  <div class="slider-label-row">
+                    <label for="slider-card-size"><i class="fa-solid fa-clone"></i> Card Size</label>
+                    <span id="val-card-size" class="slider-val-badge">1.00x</span>
+                  </div>
+                  <div class="slider-adjust-row">
+                    <button type="button" class="btn-step-adjust" data-slider="slider-card-size" data-delta="-0.05" aria-label="Decrease card size"><i class="fa-solid fa-minus"></i></button>
+                    <input type="range" id="slider-card-size" min="0.7" max="1.4" step="0.05" value="1.0">
+                    <button type="button" class="btn-step-adjust" data-slider="slider-card-size" data-delta="0.05" aria-label="Increase card size"><i class="fa-solid fa-plus"></i></button>
+                  </div>
+                </div>
+
+                <!-- Opponents Size Slider -->
+                <div class="slider-control-group">
+                  <div class="slider-label-row">
+                    <label for="slider-bot-size"><i class="fa-solid fa-robot"></i> Opponents Size</label>
+                    <span id="val-bot-size" class="slider-val-badge">1.00x</span>
+                  </div>
+                  <div class="slider-adjust-row">
+                    <button type="button" class="btn-step-adjust" data-slider="slider-bot-size" data-delta="-0.05" aria-label="Decrease opponents size"><i class="fa-solid fa-minus"></i></button>
+                    <input type="range" id="slider-bot-size" min="0.7" max="1.3" step="0.05" value="1.0">
+                    <button type="button" class="btn-step-adjust" data-slider="slider-bot-size" data-delta="0.05" aria-label="Increase opponents size"><i class="fa-solid fa-plus"></i></button>
+                  </div>
+                </div>
+
+                <!-- Font Scale Slider -->
+                <div class="slider-control-group">
+                  <div class="slider-label-row">
+                    <label for="slider-font-scale"><i class="fa-solid fa-font"></i> Font Scale</label>
+                    <span id="val-font-scale" class="slider-val-badge">1.00x</span>
+                  </div>
+                  <div class="slider-adjust-row">
+                    <button type="button" class="btn-step-adjust" data-slider="slider-font-scale" data-delta="-0.05" aria-label="Decrease font scale"><i class="fa-solid fa-minus"></i></button>
+                    <input type="range" id="slider-font-scale" min="0.8" max="1.3" step="0.05" value="1.0">
+                    <button type="button" class="btn-step-adjust" data-slider="slider-font-scale" data-delta="0.05" aria-label="Increase font scale"><i class="fa-solid fa-plus"></i></button>
+                  </div>
                 </div>
               </div>
 
-              <!-- Font Scale Slider -->
-              <div class="slider-control-group">
-                <div class="slider-label-row">
-                  <label for="slider-font-scale"><i class="fa-solid fa-font"></i> Font Scale</label>
-                  <span id="val-font-scale" class="slider-val-badge">1.00x</span>
-                </div>
-                <div class="slider-adjust-row">
-                  <button type="button" class="btn-step-adjust" data-slider="slider-font-scale" data-delta="-0.05" aria-label="Decrease font scale"><i class="fa-solid fa-minus"></i></button>
-                  <input type="range" id="slider-font-scale" min="0.8" max="1.3" step="0.05" value="1.0">
-                  <button type="button" class="btn-step-adjust" data-slider="slider-font-scale" data-delta="0.05" aria-label="Increase font scale"><i class="fa-solid fa-plus"></i></button>
-                </div>
+              <div style="margin-top: 14px; display: flex; justify-content: flex-end;">
+                <button id="btn-layout-reset" class="btn btn-secondary-3d" style="width: auto; padding: 8px 16px;">
+                  <i class="fa-solid fa-rotate-left"></i> Reset to Default
+                </button>
               </div>
             </div>
           </div>
 
           <div class="modal-footer-actions">
-            <button id="btn-layout-reset" class="btn btn-secondary-3d">
-              <i class="fa-solid fa-rotate-left"></i> Reset to Default
-            </button>
             <button id="btn-layout-save" class="btn btn-success-3d">
               <i class="fa-solid fa-check"></i> Done
             </button>

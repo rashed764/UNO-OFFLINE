@@ -25,6 +25,7 @@
       // In-Memory Authoritative Engine (For AI mode and P2P Host mode)
       this.engine = null;
       this.aiTimeout = null;
+      this.aiTurnToken = 0;
 
       // WebRTC Peer Connections
       // Host: Map of peerId -> { pc, channel, name }
@@ -287,11 +288,16 @@
       }
     }
 
-    startAiMatch() {
+    clearAiTurn() {
       if (this.aiTimeout) {
         clearTimeout(this.aiTimeout);
         this.aiTimeout = null;
       }
+      this.aiTurnToken = (this.aiTurnToken || 0) + 1;
+    }
+
+    startAiMatch() {
+      this.clearAiTurn();
 
       this.engine.startGame();
 
@@ -309,83 +315,106 @@
     }
 
     scheduleAiTurn() {
-      if (!this.engine || !this.engine.isGameStarted) return;
+      if (!this.engine || !this.engine.isGameStarted || this.engine.winner) return;
 
       const activePlayer = this.engine.getActivePlayer();
       if (!activePlayer || !activePlayer.isBot) return;
 
-      if (this.aiTimeout) {
-        clearTimeout(this.aiTimeout);
-        this.aiTimeout = null;
-      }
+      // Invalidate any previously scheduled action and track this turn attempt
+      this.clearAiTurn();
+      const currentToken = this.aiTurnToken;
+      const botId = activePlayer.id;
 
-      // Natural thinking delay (800ms - 1300ms)
-      const delay = Math.floor(Math.random() * 500) + 800;
+      // Natural thinking delay (~3 seconds) before AI makes its decision
+      const thinkingDelay = Math.floor(Math.random() * 400) + 2800;
 
       this.aiTimeout = setTimeout(() => {
         this.aiTimeout = null;
-        if (!this.engine || !this.engine.isGameStarted) return;
+        // Verify that this action still belongs to the current match, turn token, and active bot
+        if (currentToken !== this.aiTurnToken) return;
+        if (!this.engine || !this.engine.isGameStarted || this.engine.winner) return;
 
         const currentTurn = this.engine.getActivePlayer();
-        if (!currentTurn || currentTurn.id !== activePlayer.id) return;
+        if (!currentTurn || currentTurn.id !== botId || !currentTurn.isBot) return;
 
         const topCard = this.engine.discardPile[this.engine.discardPile.length - 1];
-        let cardToPlay = activePlayer.chooseCardToPlay(topCard, this.engine.currentColor);
+        let cardToPlay = currentTurn.chooseCardToPlay(topCard, this.engine.currentColor);
 
         // Heuristic: occasional bluff draw
-        if (cardToPlay && activePlayer.hasOnlyWeakCards?.() && Math.random() < 0.12) {
+        if (cardToPlay && currentTurn.hasOnlyWeakCards?.() && Math.random() < 0.12) {
           cardToPlay = null;
         }
 
-        if (!cardToPlay) {
-          const drawResult = this.engine.drawCardForPlayer(activePlayer.id);
+        if (cardToPlay) {
+          // Play chosen card directly after the thinking delay
+          this.executeBotPlayCard(currentTurn, cardToPlay);
+        } else {
+          // Bot must draw a card: execute draw and broadcast state so the draw animation runs smoothly
+          const drawResult = this.engine.drawCardForPlayer(currentTurn.id);
           this.broadcastAiState();
 
-          if (!drawResult.success || !drawResult.isPlayable) {
-            this.engine.passTurn(activePlayer.id);
+          if (!drawResult.success) {
+            this.engine.passTurn(currentTurn.id);
             this.broadcastAiState();
             this.scheduleAiTurn();
             return;
           }
 
-          cardToPlay = drawResult.drawnCard;
+          // Natural evaluation delay after drawing (~1.5 seconds)
+          // Simulates checking the newly drawn card and allows the draw animation to finish
+          const evaluationDelay = Math.floor(Math.random() * 400) + 1200;
+          this.aiTimeout = setTimeout(() => {
+            this.aiTimeout = null;
+            if (currentToken !== this.aiTurnToken) return;
+            if (!this.engine || !this.engine.isGameStarted || this.engine.winner) return;
+
+            const turnAfterDraw = this.engine.getActivePlayer();
+            if (!turnAfterDraw || turnAfterDraw.id !== botId || !turnAfterDraw.isBot) return;
+
+            // If drawn card is legally playable, play it; otherwise pass
+            if (drawResult.isPlayable && drawResult.drawnCard && this.engine.canPlayCard(drawResult.drawnCard)) {
+              this.executeBotPlayCard(turnAfterDraw, drawResult.drawnCard);
+            } else {
+              this.engine.passTurn(turnAfterDraw.id);
+              this.broadcastAiState();
+              this.scheduleAiTurn();
+            }
+          }, evaluationDelay);
         }
+      }, thinkingDelay);
+    }
 
-        // Secondary play action delay (500ms)
-        this.aiTimeout = setTimeout(() => {
-          this.aiTimeout = null;
-          if (!this.engine || !this.engine.isGameStarted) return;
+    executeBotPlayCard(botPlayer, cardToPlay) {
+      if (!this.engine || !this.engine.isGameStarted || this.engine.winner) return;
 
-          // Call UNO if bot will have 1 card
-          if (activePlayer.hand.length === 2) {
-            this.engine.callUno(activePlayer.id);
-            this.trigger('uno_called', {
-              playerId: activePlayer.id,
-              playerName: activePlayer.name,
-              message: `📣 Bot ${activePlayer.name} called UNO!`
-            });
-          }
+      // Call UNO if bot will have 1 card remaining
+      if (botPlayer.hand.length === 2) {
+        this.engine.callUno(botPlayer.id);
+        this.trigger('uno_called', {
+          playerId: botPlayer.id,
+          playerName: botPlayer.name,
+          message: `📣 Bot ${botPlayer.name} called UNO!`
+        });
+      }
 
-          const isWild = (cardToPlay.color === 'wild' || cardToPlay.color === 'wild_draw4');
-          const chosenColor = isWild ? activePlayer.chooseBestColor() : null;
+      const isWild = (cardToPlay.color === 'wild' || cardToPlay.color === 'wild_draw4');
+      const chosenColor = isWild ? botPlayer.chooseBestColor() : null;
 
-          const playResult = this.engine.playCard(activePlayer.id, cardToPlay.id, chosenColor);
-          if (!playResult.success) {
-            if (!this.engine.hasDrawnThisTurn) this.engine.drawCardForPlayer(activePlayer.id);
-            if (this.engine.canPass) this.engine.passTurn(activePlayer.id);
-            else this.engine.advanceTurn(1);
-          }
+      const playResult = this.engine.playCard(botPlayer.id, cardToPlay.id, chosenColor);
+      if (!playResult.success) {
+        if (!this.engine.hasDrawnThisTurn) this.engine.drawCardForPlayer(botPlayer.id);
+        if (this.engine.canPass) this.engine.passTurn(botPlayer.id);
+        else this.engine.advanceTurn(1);
+      }
 
-          this.broadcastAiState();
+      this.broadcastAiState();
 
-          if (this.engine.winner) {
-            this.finalizeAiGameOver();
-            return;
-          }
+      if (this.engine.winner) {
+        this.finalizeAiGameOver();
+        return;
+      }
 
-          this.scheduleAiTurn();
-        }, 500);
-      }, delay);
+      this.scheduleAiTurn();
     }
 
     broadcastAiState() {
@@ -396,6 +425,7 @@
     }
 
     finalizeAiGameOver() {
+      this.clearAiTurn();
       if (!this.engine || !this.engine.winner) return;
 
       const winner = this.engine.winner;
@@ -491,10 +521,7 @@
     }
 
     handleLeaveRoom({ roomId }) {
-      if (this.aiTimeout) {
-        clearTimeout(this.aiTimeout);
-        this.aiTimeout = null;
-      }
+      this.clearAiTurn();
       this.closeAllP2P();
       this.engine = null;
     }
@@ -968,6 +995,7 @@
   localP2P.init();
 
   // Expose as global socket mock and LocalP2P
+  root.LocalP2PManager = LocalP2PManager;
   root.LocalP2P = localP2P;
   root.localSocket = localP2P;
 

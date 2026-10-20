@@ -104,6 +104,7 @@ class GameEngine {
     this.lastDrawEvent = null;
     this.canPass = false;
     this.isGameStarted = true;
+    this.shuffleCount = 1;
 
     // Reset hands for all players
     this.players.forEach(p => {
@@ -173,6 +174,7 @@ class GameEngine {
     const topCard = this.discardPile.pop();
     this.deck = this.shuffleDeck([...this.discardPile]);
     this.discardPile = [topCard];
+    this.shuffleCount = (this.shuffleCount || 0) + 1;
   }
 
   /**
@@ -498,6 +500,7 @@ class GameEngine {
       lastDrawEvent: this.lastDrawEvent ? { ...this.lastDrawEvent } : null,
       canPass: Boolean(this.canPass && isMyTurn),
       isGameStarted: Boolean(this.isGameStarted),
+      shuffleCount: this.shuffleCount || 0,
       winner: this.winner ? { id: String(this.winner.id), name: String(this.winner.name) } : null
     };
   }

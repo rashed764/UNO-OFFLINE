@@ -954,9 +954,15 @@
 
   function appendCardToPlayerBundle(cardData, index) {
     const handContainer = document.getElementById('player-cards-fan');
-    if (!handContainer) return null;
+    if (!handContainer || !cardData) return null;
 
     const cardEl = create3DCardElement(cardData, index, 0, false);
+    const cardIdStr = cardData.id != null ? String(cardData.id) : '';
+    if (cardIdStr) {
+      cardEl.dataset.cardId = cardIdStr;
+    }
+    cardEl.dataset.theme = document.documentElement.dataset.deckTheme || 'classic';
+    cardEl._cardIndex = index;
     cardEl.style.position = 'absolute';
     cardEl.style.bottom = '0';
     cardEl.style.transformOrigin = 'bottom center';
@@ -970,7 +976,12 @@
     cardEl.style.setProperty('--i', index);
 
     cardEl.addEventListener('click', () => {
-      handleCardClick(cardData, cardEl, index);
+      const myHand = appState.latestServerState?.myHand;
+      const currentHandIndex = Array.isArray(myHand)
+        ? myHand.findIndex(c => String(c?.id) === cardIdStr)
+        : -1;
+      const effectiveIndex = (currentHandIndex !== -1) ? currentHandIndex : (cardEl._cardIndex ?? index);
+      handleCardClick(cardData, cardEl, effectiveIndex);
     });
 
     handContainer.appendChild(cardEl);
@@ -1052,6 +1063,7 @@
 
     const myId = appState.myPlayerId || socket.id;
     const playerDestMap = new Map();
+    UnoAudio.playShuffle();
 
     state.players.forEach(p => {
       // Every LAN player is human, so only this socket's player ID is our hand.
@@ -1065,13 +1077,17 @@
       }
     });
 
-    const totalCardsPerPlayer = 7;
+    const maxCards = Math.max(1, ...(state.players || []).map(p => p.handLength || p.cardCount || (p.hand && p.hand.length) || 0), (state.myHand ? state.myHand.length : 0));
+    const totalCardsPerPlayer = (state.myHand && state.myHand.length > 0) ? state.myHand.length : (maxCards || 7);
     let animationQueue = [];
 
-    // 1. Deal 7 cards to each player
+    // 1. Deal cards to each player
     for (let cardRound = 0; cardRound < totalCardsPerPlayer; cardRound++) {
       state.players.forEach((p, pIdx) => {
         const isMe = String(p.id) === String(myId);
+        const pCardCount = isMe ? (state.myHand ? state.myHand.length : totalCardsPerPlayer) : (p.cardCount || p.handLength || totalCardsPerPlayer);
+        if (cardRound >= pCardCount) return;
+
         const destEl = playerDestMap.get(p.id) || drawDeckEl;
         const targetRot = getTargetRotationForPlayer(p.id, state.players, myId);
         animationQueue.push({
@@ -1265,6 +1281,15 @@
       }
     }
 
+    // Reshuffle audio notification check
+    if (state.shuffleCount && state.shuffleCount > (window.lastRenderedShuffleCount || 0)) {
+      if (window.lastRenderedShuffleCount !== undefined) {
+        UnoAudio.playShuffle();
+        showToast('🔄 Discard pile reshuffled into draw deck');
+      }
+      window.lastRenderedShuffleCount = state.shuffleCount;
+    }
+
     // 1. Update Direction Flow Ring
     const directionRing = document.getElementById('direction-ring-3d');
     if (directionRing) {
@@ -1358,11 +1383,11 @@
     if (handContainer) {
       const cardsToRender = state.myHand;
       const handSignature = getHandSignature(cardsToRender);
+      const currentHandCards = handContainer.querySelectorAll('.card-3d:not(.draw-flight-card)');
 
-      if (handContainer.dataset.handSignature === handSignature) {
-        // Fast path: hand cards are identical, sync selection and just-drawn states without full relayout
-        const existingCards = handContainer.querySelectorAll('.card-3d:not(.draw-flight-card)');
-        existingCards.forEach((cardEl) => {
+      if (handContainer.dataset.handSignature === handSignature && currentHandCards.length === cardsToRender.length) {
+        // Fast path: hand cards are identical and count matches, sync selection and just-drawn states without full relayout
+        currentHandCards.forEach((cardEl) => {
           const cardId = cardEl.dataset.cardId;
           const isSelected = appState.selectedCardId && String(cardId) === String(appState.selectedCardId);
           cardEl.classList.toggle('selected', Boolean(isSelected));
@@ -1372,13 +1397,23 @@
       } else {
         handContainer.dataset.handSignature = handSignature;
 
-        // Build a map of existing card DOM elements by cardId
+        // Build a map of existing card DOM elements by cardId, collecting any untracked or duplicate elements
         const existingCardMap = new Map();
+        const staleOrDuplicateElements = [];
+
         Array.from(handContainer.children).forEach(child => {
-          if (child.classList?.contains('card-3d') && !child.classList.contains('draw-flight-card') && child.dataset?.cardId) {
-            existingCardMap.set(child.dataset.cardId, child);
+          if (child.classList?.contains('card-3d') && !child.classList.contains('draw-flight-card')) {
+            const cardId = child.dataset?.cardId;
+            if (cardId && !existingCardMap.has(cardId)) {
+              existingCardMap.set(cardId, child);
+            } else {
+              staleOrDuplicateElements.push(child);
+            }
           }
         });
+
+        // Immediately prune untracked or duplicate elements
+        staleOrDuplicateElements.forEach(el => el.remove());
 
         const retainedCardIds = new Set();
         const activeTheme = document.documentElement.dataset.deckTheme;
@@ -1400,7 +1435,12 @@
             newEl.dataset.theme = activeTheme || 'classic';
             newEl._cardIndex = idx;
             newEl.addEventListener('click', () => {
-              handleCardClick(card, newEl, newEl._cardIndex ?? idx);
+              const myHand = appState.latestServerState?.myHand;
+              const currentHandIndex = Array.isArray(myHand)
+                ? myHand.findIndex(c => String(c?.id) === cardIdStr)
+                : -1;
+              const effectiveIndex = (currentHandIndex !== -1) ? currentHandIndex : (newEl._cardIndex ?? idx);
+              handleCardClick(card, newEl, effectiveIndex);
             });
             if (cardEl && cardEl.parentNode === handContainer) {
               cardEl.replaceWith(newEl);
@@ -1408,12 +1448,15 @@
               handContainer.appendChild(newEl);
             }
             cardEl = newEl;
+            existingCardMap.set(cardIdStr, newEl);
           } else {
             // Reused existing element: update its stored index for click handling
             cardEl._cardIndex = idx;
-            if (handContainer.children[idx] !== cardEl) {
-              handContainer.insertBefore(cardEl, handContainer.children[idx] || null);
-            }
+          }
+
+          // Ensure DOM order matches cardsToRender
+          if (handContainer.children[idx] !== cardEl) {
+            handContainer.insertBefore(cardEl, handContainer.children[idx] || null);
           }
 
           retainedCardIds.add(cardIdStr);
@@ -1433,10 +1476,13 @@
           }
         });
 
-        // Clean up any cards no longer in the player's hand
-        existingCardMap.forEach((el, id) => {
-          if (!retainedCardIds.has(id)) {
-            el.remove();
+        // Clean up any cards no longer in the player's hand, plus any stray elements
+        Array.from(handContainer.children).forEach(child => {
+          if (child.classList?.contains('card-3d') && !child.classList.contains('draw-flight-card')) {
+            const cardId = child.dataset?.cardId;
+            if (!cardId || !retainedCardIds.has(cardId)) {
+              child.remove();
+            }
           }
         });
 
@@ -1609,6 +1655,10 @@
     }
 
     const safeCard = card || { color: 'red', value: '0', type: 'number' };
+    if (safeCard && safeCard.id != null) {
+      cardEl.dataset.cardId = String(safeCard.id);
+      cardEl.dataset.theme = themeId || 'classic';
+    }
     const isWild = (safeCard.color === 'wild' || safeCard.color === 'wild_draw4' || safeCard.value === 'wild' || safeCard.value === 'wild_draw4');
     const colorClass = isWild ? 'card-black' : `card-${safeCard.color}`;
     const displayVal = getCardDisplayValue(safeCard.value);
@@ -1936,10 +1986,690 @@
     });
   }
 
+  // ==========================================
+  // UNIFIED WEB AUDIO SYNTHESIZER & ARCADE BGM TRACKER
+  // ==================================================
+  const UnoAudio = (function() {
+    let sharedCtx = null;
+    const lastSoundTimes = {};
+
+    // Audio Settings State (persisted across sessions)
+    let masterSoundEnabled = localStorage.getItem('uno_sound_enabled') !== 'false';
+    let bgmEnabled = localStorage.getItem('uno_bgm_enabled') !== 'false';
+    let sfxEnabled = localStorage.getItem('uno_sfx_enabled') !== 'false';
+    let bgmVolume = parseFloat(localStorage.getItem('uno_bgm_volume') || '0.50');
+    let sfxVolume = parseFloat(localStorage.getItem('uno_sfx_volume') || '1.00');
+
+    // BGM Audio Nodes & Sequencer State
+    let bgmMasterGain = null;
+    let bgmFilter = null;
+    let bgmTimer = null;
+    let bgmStep = 0;
+    let bgmNextStepTime = 0;
+    let bgmIsRunning = false;
+
+    function isMuted() {
+      return !masterSoundEnabled;
+    }
+
+    function isBgmEnabled() {
+      return masterSoundEnabled && bgmEnabled;
+    }
+
+    function isSfxEnabled() {
+      return masterSoundEnabled && sfxEnabled;
+    }
+
+    function getSfxVolume() {
+      return sfxVolume;
+    }
+
+    function getBgmVolume() {
+      return bgmVolume;
+    }
+
+    function getEffectiveSfxVol(force = false) {
+      if (force) return Math.max(0.4, sfxVolume);
+      if (!masterSoundEnabled || !sfxEnabled) return 0;
+      return sfxVolume;
+    }
+
+    function getContext(force = false) {
+      if (!masterSoundEnabled && !force) return null;
+      const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtxClass) return null;
+      if (!sharedCtx || sharedCtx.state === 'closed') {
+        try {
+          sharedCtx = new AudioCtxClass();
+        } catch (_) {
+          return null;
+        }
+      }
+      if (sharedCtx.state === 'suspended') {
+        sharedCtx.resume().catch(() => {});
+      }
+      return sharedCtx;
+    }
+
+    // Auto-unlock WebAudio and start BGM on first player gesture
+    const unlockGestures = ['click', 'touchstart', 'touchend', 'keydown'];
+    function unlock() {
+      const ctx = getContext(true);
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume().then(() => {
+          if (isBgmEnabled() && !bgmIsRunning) {
+            startBGM();
+          }
+        }).catch(() => {});
+      } else if (ctx && isBgmEnabled() && !bgmIsRunning) {
+        startBGM();
+      }
+    }
+    unlockGestures.forEach(evt => document.addEventListener(evt, unlock, { passive: true }));
+
+    function canPlay(key, minIntervalMs = 50, force = false) {
+      if (!force && (!masterSoundEnabled || !sfxEnabled)) return false;
+      if (force) return true;
+      const now = Date.now();
+      if (lastSoundTimes[key] && (now - lastSoundTimes[key]) < minIntervalMs) {
+        return false;
+      }
+      lastSoundTimes[key] = now;
+      return true;
+    }
+
+    // ==========================================
+    // HIGHLY BOOSTED ARCADE SOUND EFFECTS
+    // ==========================================
+
+    // 1. Card Play / Discard
+    function playCardPlay(force = false) {
+      if (!canPlay('play', 55, force)) return;
+      const vol = getEffectiveSfxVol(force);
+      if (vol <= 0.001) return;
+      const ctx = getContext(force);
+      if (!ctx) return;
+      try {
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(560, now);
+        osc.frequency.exponentialRampToValueAtTime(240, now + 0.055);
+
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(0.95 * vol, now + 0.005);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.065);
+
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.07);
+      } catch (_) {}
+    }
+
+    // 2. Card Draw
+    function playCardDraw(force = false) {
+      if (!canPlay('draw', 65, force)) return;
+      const vol = getEffectiveSfxVol(force);
+      if (vol <= 0.001) return;
+      const ctx = getContext(force);
+      if (!ctx) return;
+      try {
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(280, now);
+        osc.frequency.exponentialRampToValueAtTime(760, now + 0.085);
+
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(0.90 * vol, now + 0.008);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.095);
+
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.1);
+      } catch (_) {}
+    }
+
+    // 3. Deck Shuffle
+    function playShuffle(force = false) {
+      if (!canPlay('shuffle', 300, force)) return;
+      const vol = getEffectiveSfxVol(force);
+      if (vol <= 0.001) return;
+      const ctx = getContext(force);
+      if (!ctx) return;
+      try {
+        const baseNow = ctx.currentTime;
+        const tones = [380, 500, 440, 580];
+        tones.forEach((freq, idx) => {
+          const now = baseNow + idx * 0.042;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now);
+          osc.frequency.exponentialRampToValueAtTime(freq * 0.62, now + 0.035);
+
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.80 * vol, now + 0.004);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.038);
+
+          osc.connect(gain).connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.042);
+        });
+      } catch (_) {}
+    }
+
+    // 4. Skip
+    function playSkip(force = false) {
+      if (!canPlay('skip', 220, force)) return;
+      const vol = getEffectiveSfxVol(force);
+      if (vol <= 0.001) return;
+      const ctx = getContext(force);
+      if (!ctx) return;
+      try {
+        const now = ctx.currentTime;
+
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = 'sawtooth';
+        osc1.frequency.setValueAtTime(540, now);
+        osc1.frequency.exponentialRampToValueAtTime(180, now + 0.17);
+        gain1.gain.setValueAtTime(0.001, now);
+        gain1.gain.linearRampToValueAtTime(0.90 * vol, now + 0.008);
+        gain1.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+        osc1.connect(gain1).connect(ctx.destination);
+        osc1.start(now);
+        osc1.stop(now + 0.19);
+
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'square';
+        osc2.frequency.setValueAtTime(270, now + 0.02);
+        osc2.frequency.exponentialRampToValueAtTime(110, now + 0.18);
+        gain2.gain.setValueAtTime(0.001, now);
+        gain2.gain.setValueAtTime(0.60 * vol, now + 0.02);
+        gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+        osc2.connect(gain2).connect(ctx.destination);
+        osc2.start(now + 0.02);
+        osc2.stop(now + 0.19);
+      } catch (_) {}
+    }
+
+    // 5. Reverse
+    function playReverse(force = false) {
+      if (!canPlay('reverse', 300, force)) return;
+      const vol = getEffectiveSfxVol(force);
+      if (vol <= 0.001) return;
+      const ctx = getContext(force);
+      if (!ctx) return;
+      try {
+        const now = ctx.currentTime;
+        const master = ctx.createGain();
+        master.gain.setValueAtTime(0.0001, now);
+        master.gain.exponentialRampToValueAtTime(0.95 * vol, now + 0.03);
+        master.gain.exponentialRampToValueAtTime(0.0001, now + 0.75);
+        master.connect(ctx.destination);
+
+        const warp = ctx.createOscillator();
+        const warpGain = ctx.createGain();
+        warp.type = 'sawtooth';
+        warp.frequency.setValueAtTime(640, now);
+        warp.frequency.exponentialRampToValueAtTime(180, now + 0.18);
+        warp.frequency.exponentialRampToValueAtTime(320, now + 0.36);
+        warpGain.gain.setValueAtTime(0.95, now);
+        warpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.42);
+        warp.connect(warpGain).connect(master);
+        warp.start(now);
+        warp.stop(now + 0.45);
+
+        const bass = ctx.createOscillator();
+        const bassGain = ctx.createGain();
+        bass.type = 'sine';
+        bass.frequency.setValueAtTime(95, now + 0.08);
+        bass.frequency.exponentialRampToValueAtTime(42, now + 0.65);
+        bassGain.gain.setValueAtTime(0.001, now);
+        bassGain.gain.setValueAtTime(0.95, now + 0.08);
+        bassGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.7);
+        bass.connect(bassGain).connect(master);
+        bass.start(now + 0.08);
+        bass.stop(now + 0.72);
+      } catch (_) {}
+    }
+
+    // 6. Draw Two
+    function playDrawTwo(force = false) {
+      if (!canPlay('drawTwo', 250, force)) return;
+      const vol = getEffectiveSfxVol(force);
+      if (vol <= 0.001) return;
+      const ctx = getContext(force);
+      if (!ctx) return;
+      try {
+        const now = ctx.currentTime;
+
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = 'triangle';
+        osc1.frequency.setValueAtTime(480, now);
+        osc1.frequency.exponentialRampToValueAtTime(640, now + 0.07);
+        gain1.gain.setValueAtTime(0.001, now);
+        gain1.gain.linearRampToValueAtTime(0.90 * vol, now + 0.005);
+        gain1.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+        osc1.connect(gain1).connect(ctx.destination);
+        osc1.start(now);
+        osc1.stop(now + 0.085);
+
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'sawtooth';
+        osc2.frequency.setValueAtTime(640, now + 0.09);
+        osc2.frequency.exponentialRampToValueAtTime(840, now + 0.19);
+        gain2.gain.setValueAtTime(0.001, now + 0.09);
+        gain2.gain.linearRampToValueAtTime(0.85 * vol, now + 0.096);
+        gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.21);
+        osc2.connect(gain2).connect(ctx.destination);
+        osc2.start(now + 0.09);
+        osc2.stop(now + 0.22);
+      } catch (_) {}
+    }
+
+    // 7. Wild Card
+    function playWild(force = false) {
+      if (!canPlay('wild', 300, force)) return;
+      const vol = getEffectiveSfxVol(force);
+      if (vol <= 0.001) return;
+      const ctx = getContext(force);
+      if (!ctx) return;
+      try {
+        const baseNow = ctx.currentTime;
+        const notes = [523.25, 659.25, 783.99, 1046.50];
+        notes.forEach((freq, idx) => {
+          const now = baseNow + idx * 0.045;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+
+          osc.type = idx === 3 ? 'triangle' : 'sine';
+          osc.frequency.setValueAtTime(freq, now);
+
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.85 * vol, now + 0.006);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+
+          osc.connect(gain).connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.17);
+        });
+      } catch (_) {}
+    }
+
+    // 8. Wild Draw Four
+    function playWildDrawFour(force = false) {
+      if (!canPlay('wildDrawFour', 350, force)) return;
+      const vol = getEffectiveSfxVol(force);
+      if (vol <= 0.001) return;
+      const ctx = getContext(force);
+      if (!ctx) return;
+      try {
+        const now = ctx.currentTime;
+
+        const master = ctx.createGain();
+        master.gain.setValueAtTime(0.0001, now);
+        master.gain.exponentialRampToValueAtTime(0.98 * vol, now + 0.015);
+        master.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+        master.connect(ctx.destination);
+
+        const siren = ctx.createOscillator();
+        const sirenGain = ctx.createGain();
+        siren.type = 'sawtooth';
+        siren.frequency.setValueAtTime(800, now);
+        siren.frequency.exponentialRampToValueAtTime(220, now + 0.24);
+        sirenGain.gain.setValueAtTime(0.95, now);
+        sirenGain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+        siren.connect(sirenGain).connect(master);
+        siren.start(now);
+        siren.stop(now + 0.3);
+
+        const sub = ctx.createOscillator();
+        const subGain = ctx.createGain();
+        sub.type = 'triangle';
+        sub.frequency.setValueAtTime(140, now);
+        sub.frequency.exponentialRampToValueAtTime(42, now + 0.38);
+        subGain.gain.setValueAtTime(0.001, now);
+        subGain.gain.setValueAtTime(0.98, now + 0.02);
+        subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+        sub.connect(subGain).connect(master);
+        sub.start(now);
+        sub.stop(now + 0.42);
+      } catch (_) {}
+    }
+
+    function testSound(name) {
+      const soundMap = {
+        playCardPlay,
+        playCardDraw,
+        playShuffle,
+        playSkip,
+        playReverse,
+        playDrawTwo,
+        playWild,
+        playWildDrawFour
+      };
+      if (typeof soundMap[name] === 'function') {
+        soundMap[name](true);
+        return true;
+      }
+      return false;
+    }
+
+    // ==========================================
+    // ARCADE SYNTH BACKGROUND MUSIC (BGM) TRACKER
+    // ==========================================
+    // 116 BPM upbeat casual arcade loop (C - Am - F - G)
+    const BGM_TEMPO = 116;
+    const SEC_PER_STEP = 60 / (BGM_TEMPO * 4); // 0.1293s per 16th note
+    const TOTAL_STEPS = 64; // 4 bars x 16 steps
+
+    // Note frequencies table
+    const NF = {
+      C2: 65.41, D2: 73.42, E2: 82.41, F2: 87.31, G2: 98.00, A2: 110.00, B2: 123.47,
+      C3: 130.81, D3: 146.83, E3: 164.81, F3: 174.61, G3: 196.00, A3: 220.00, B3: 246.94,
+      C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23, G4: 392.00, A4: 440.00, B4: 493.88,
+      C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46, G5: 783.99, A5: 880.00, B5: 987.77,
+      C6: 1046.50
+    };
+
+    function initBgmNodes(ctx) {
+      if (bgmMasterGain && bgmFilter) return;
+      try {
+        bgmMasterGain = ctx.createGain();
+        bgmFilter = ctx.createBiquadFilter();
+
+        bgmFilter.type = 'lowpass';
+        bgmFilter.frequency.setValueAtTime(2400, ctx.currentTime);
+        bgmFilter.Q.setValueAtTime(1.1, ctx.currentTime);
+
+        const currentTargetGain = isBgmEnabled() ? bgmVolume * 0.42 : 0.0001;
+        bgmMasterGain.gain.setValueAtTime(currentTargetGain, ctx.currentTime);
+
+        bgmFilter.connect(bgmMasterGain).connect(ctx.destination);
+      } catch (_) {}
+    }
+
+    function playBgmNote(freq, startTime, duration, type = 'sine', gainLevel = 0.12) {
+      const ctx = sharedCtx;
+      if (!ctx || !bgmFilter) return;
+      try {
+        const osc = ctx.createOscillator();
+        const env = ctx.createGain();
+
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, startTime);
+
+        env.gain.setValueAtTime(0.0001, startTime);
+        env.gain.linearRampToValueAtTime(gainLevel, startTime + 0.012);
+        env.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+
+        osc.connect(env).connect(bgmFilter);
+        osc.start(startTime);
+        osc.stop(startTime + duration + 0.02);
+      } catch (_) {}
+    }
+
+    function playBgmDrum(type, startTime) {
+      const ctx = sharedCtx;
+      if (!ctx || !bgmFilter) return;
+      try {
+        if (type === 'kick') {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(130, startTime);
+          osc.frequency.exponentialRampToValueAtTime(45, startTime + 0.08);
+          gain.gain.setValueAtTime(0.24, startTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.09);
+          osc.connect(gain).connect(bgmFilter);
+          osc.start(startTime);
+          osc.stop(startTime + 0.1);
+        } else if (type === 'snare') {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(240, startTime);
+          osc.frequency.exponentialRampToValueAtTime(90, startTime + 0.06);
+          gain.gain.setValueAtTime(0.14, startTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.07);
+          osc.connect(gain).connect(bgmFilter);
+          osc.start(startTime);
+          osc.stop(startTime + 0.08);
+        } else if (type === 'hihat') {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(1200, startTime);
+          gain.gain.setValueAtTime(0.035, startTime);
+          gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.03);
+          osc.connect(gain).connect(bgmFilter);
+          osc.start(startTime);
+          osc.stop(startTime + 0.035);
+        }
+      } catch (_) {}
+    }
+
+    function scheduleBgmStep(step, time) {
+      const bar = Math.floor(step / 16);
+      const stepInBar = step % 16;
+
+      // 1. Bassline (warm triangle groove)
+      let bassFreq = null;
+      if (bar === 0) { // C Major
+        if ([0, 3, 6, 8, 10, 12, 14].includes(stepInBar)) {
+          bassFreq = (stepInBar === 6 || stepInBar === 14) ? NF.C3 : (stepInBar === 10 ? NF.E2 : (stepInBar === 12 ? NF.G2 : NF.C2));
+        }
+      } else if (bar === 1) { // A Minor
+        if ([0, 3, 6, 8, 10, 12, 14].includes(stepInBar)) {
+          bassFreq = (stepInBar === 6 || stepInBar === 14) ? NF.A2 : (stepInBar === 10 ? NF.C3 : (stepInBar === 12 ? NF.E2 : NF.A2));
+        }
+      } else if (bar === 2) { // F Major
+        if ([0, 3, 6, 8, 10, 12, 14].includes(stepInBar)) {
+          bassFreq = (stepInBar === 6 || stepInBar === 14) ? NF.F2 : (stepInBar === 10 ? NF.A2 : (stepInBar === 12 ? NF.C3 : NF.F2));
+        }
+      } else if (bar === 3) { // G Major
+        if ([0, 3, 6, 8, 10, 12, 14].includes(stepInBar)) {
+          bassFreq = (stepInBar === 6 || stepInBar === 14) ? NF.G2 : (stepInBar === 10 ? NF.B2 : (stepInBar === 12 ? NF.D3 : NF.G2));
+        }
+      }
+      if (bassFreq) {
+        playBgmNote(bassFreq, time, SEC_PER_STEP * 1.4, 'triangle', 0.22);
+      }
+
+      // 2. Chords Arpeggio (staccato synth chords)
+      if (stepInBar % 2 === 0) {
+        const chordNotes = {
+          0: [NF.E4, NF.G4, NF.C5, NF.E5],
+          1: [NF.C4, NF.E4, NF.A4, NF.C5],
+          2: [NF.C4, NF.F4, NF.A4, NF.C5],
+          3: [NF.D4, NF.G4, NF.B4, NF.D5]
+        }[bar];
+        const chordNote = chordNotes[(stepInBar / 2) % 4];
+        playBgmNote(chordNote, time, SEC_PER_STEP * 0.85, 'sine', 0.08);
+      }
+
+      // 3. Catchy Lead Melody (playful, memorable arcade melody)
+      const melodyMap = {
+        0: NF.C5, 4: NF.E5, 8: NF.G5, 12: NF.E5, 14: NF.D5,
+        16: NF.C5, 20: NF.A4, 24: NF.G4, 28: NF.A4, 30: NF.C5,
+        32: NF.D5, 36: NF.E5, 40: NF.F5, 44: NF.E5, 46: NF.D5,
+        48: NF.G5, 54: NF.E5, 58: NF.D5, 60: NF.C5
+      };
+      if (melodyMap[step]) {
+        playBgmNote(melodyMap[step], time, SEC_PER_STEP * 2.2, 'triangle', 0.16);
+      }
+
+      // 4. Rhythm Percussion
+      if (stepInBar === 0 || stepInBar === 8) {
+        playBgmDrum('kick', time);
+      } else if (stepInBar === 4 || stepInBar === 12) {
+        playBgmDrum('snare', time);
+      }
+      if ([2, 6, 10, 14].includes(stepInBar)) {
+        playBgmDrum('hihat', time);
+      }
+    }
+
+    function bgmLoop() {
+      if (!bgmIsRunning) return;
+      const ctx = sharedCtx;
+      if (!ctx) return;
+      const lookahead = 0.12; // 120ms lookahead
+      while (bgmNextStepTime < ctx.currentTime + lookahead) {
+        scheduleBgmStep(bgmStep, bgmNextStepTime);
+        bgmNextStepTime += SEC_PER_STEP;
+        bgmStep = (bgmStep + 1) % TOTAL_STEPS;
+      }
+    }
+
+    function startBGM() {
+      if (!isBgmEnabled()) return;
+      const ctx = getContext(true);
+      if (!ctx) return;
+      initBgmNodes(ctx);
+      if (bgmIsRunning) return;
+
+      bgmIsRunning = true;
+      bgmStep = 0;
+      bgmNextStepTime = ctx.currentTime + 0.05;
+
+      if (bgmMasterGain) {
+        bgmMasterGain.gain.cancelScheduledValues(ctx.currentTime);
+        bgmMasterGain.gain.setValueAtTime(0.0001, ctx.currentTime);
+        bgmMasterGain.gain.linearRampToValueAtTime(bgmVolume * 0.42, ctx.currentTime + 0.35);
+      }
+
+      if (bgmTimer) clearInterval(bgmTimer);
+      bgmTimer = setInterval(bgmLoop, 35);
+    }
+
+    function stopBGM() {
+      if (!bgmIsRunning) return;
+      bgmIsRunning = false;
+      if (bgmTimer) {
+        clearInterval(bgmTimer);
+        bgmTimer = null;
+      }
+      if (sharedCtx && bgmMasterGain) {
+        try {
+          const now = sharedCtx.currentTime;
+          bgmMasterGain.gain.cancelScheduledValues(now);
+          bgmMasterGain.gain.setValueAtTime(bgmMasterGain.gain.value, now);
+          bgmMasterGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+        } catch (_) {}
+      }
+    }
+
+    function pauseBGM() {
+      if (bgmTimer) {
+        clearInterval(bgmTimer);
+        bgmTimer = null;
+      }
+      bgmIsRunning = false;
+    }
+
+    function resumeBGM() {
+      if (isBgmEnabled() && !bgmIsRunning) {
+        startBGM();
+      }
+    }
+
+    // Page visibility listener: pause BGM when tab is hidden, resume when visible
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        pauseBGM();
+      } else {
+        resumeBGM();
+      }
+    });
+
+    // Control setters
+    function setMasterSound(enabled) {
+      masterSoundEnabled = !!enabled;
+      localStorage.setItem('uno_sound_enabled', masterSoundEnabled ? 'true' : 'false');
+      if (!masterSoundEnabled) {
+        stopBGM();
+      } else {
+        if (bgmEnabled) startBGM();
+      }
+    }
+
+    function setBgmEnabled(enabled) {
+      bgmEnabled = !!enabled;
+      localStorage.setItem('uno_bgm_enabled', bgmEnabled ? 'true' : 'false');
+      if (bgmEnabled && masterSoundEnabled) {
+        startBGM();
+      } else {
+        stopBGM();
+      }
+    }
+
+    function setBgmVolume(vol) {
+      bgmVolume = Math.max(0, Math.min(1, parseFloat(vol)));
+      localStorage.setItem('uno_bgm_volume', bgmVolume.toFixed(2));
+      if (sharedCtx && bgmMasterGain && isBgmEnabled()) {
+        try {
+          const now = sharedCtx.currentTime;
+          bgmMasterGain.gain.cancelScheduledValues(now);
+          bgmMasterGain.gain.setValueAtTime(bgmMasterGain.gain.value, now);
+          bgmMasterGain.gain.linearRampToValueAtTime(bgmVolume * 0.42, now + 0.08);
+        } catch (_) {}
+      }
+    }
+
+    function setSfxEnabled(enabled) {
+      sfxEnabled = !!enabled;
+      localStorage.setItem('uno_sfx_enabled', sfxEnabled ? 'true' : 'false');
+    }
+
+    function setSfxVolume(vol) {
+      sfxVolume = Math.max(0, Math.min(1, parseFloat(vol)));
+      localStorage.setItem('uno_sfx_volume', sfxVolume.toFixed(2));
+    }
+
+    return {
+      isMuted,
+      isBgmEnabled,
+      isSfxEnabled,
+      getBgmVolume,
+      getSfxVolume,
+      setMasterSound,
+      setBgmEnabled,
+      setBgmVolume,
+      setSfxEnabled,
+      setSfxVolume,
+      startBGM,
+      stopBGM,
+      pauseBGM,
+      resumeBGM,
+      getContext,
+      playCardPlay,
+      playCardDraw,
+      playShuffle,
+      playSkip,
+      playReverse,
+      playDrawTwo,
+      playWild,
+      playWildDrawFour,
+      testSound
+    };
+  })();
+  window.UnoAudio = UnoAudio;
+
   function playWildColorChord(color) {
-    if (document.getElementById('sound-status')?.textContent?.trim() === 'OFF') return;
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) return;
+    if (UnoAudio.isMuted()) return;
+    const ctx = UnoAudio.getContext();
+    if (!ctx) return;
     const chords = {
       red: [261.63, 329.63, 392],
       blue: [220, 277.18, 329.63],
@@ -1947,23 +2677,21 @@
       yellow: [329.63, 415.3, 493.88]
     };
     try {
-      const audio = new AudioContextClass();
-      const now = audio.currentTime;
-      chords[color].forEach((frequency, index) => {
-        const oscillator = audio.createOscillator();
-        const envelope = audio.createGain();
+      const now = ctx.currentTime;
+      (chords[color] || chords.red).forEach((frequency, index) => {
+        const oscillator = ctx.createOscillator();
+        const envelope = ctx.createGain();
         oscillator.type = index === 1 ? 'triangle' : 'sine';
         oscillator.frequency.setValueAtTime(frequency, now);
         oscillator.detune.setValueAtTime(index === 0 ? -7 : index === 2 ? 7 : 0, now);
         envelope.gain.setValueAtTime(.0001, now);
-        envelope.gain.exponentialRampToValueAtTime(.1 / (index + 1), now + .045 + index * .025);
+        const chordVol = UnoAudio.isSfxEnabled() ? UnoAudio.getSfxVolume() : 1.0;
+        envelope.gain.exponentialRampToValueAtTime((.50 / (index + 1)) * chordVol, now + .045 + index * .025);
         envelope.gain.exponentialRampToValueAtTime(.0001, now + .72);
-        oscillator.connect(envelope).connect(audio.destination);
+        oscillator.connect(envelope).connect(ctx.destination);
         oscillator.start(now + index * .025);
         oscillator.stop(now + .75);
       });
-      audio.resume().catch(() => {});
-      setTimeout(() => audio.close().catch(() => {}), 950);
     } catch (_) {
       // Audio can be unavailable until a browser gesture unlocks it.
     }
@@ -2046,44 +2774,7 @@
   }
 
   function playReverseSynthSound() {
-    if (document.getElementById('sound-status')?.textContent?.trim() === 'OFF') return;
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) return;
-    try {
-      const context = new AudioContextClass();
-      const now = context.currentTime;
-      const master = context.createGain();
-      master.gain.setValueAtTime(.0001, now);
-      master.gain.exponentialRampToValueAtTime(.16, now + .035);
-      master.gain.exponentialRampToValueAtTime(.0001, now + 1.15);
-      master.connect(context.destination);
-
-      const warp = context.createOscillator();
-      const warpGain = context.createGain();
-      warp.type = 'sawtooth';
-      warp.frequency.setValueAtTime(620, now);
-      warp.frequency.exponentialRampToValueAtTime(72, now + .72);
-      warpGain.gain.setValueAtTime(.42, now);
-      warpGain.gain.exponentialRampToValueAtTime(.001, now + .76);
-      warp.connect(warpGain).connect(master);
-      warp.start(now);
-      warp.stop(now + .78);
-
-      const bass = context.createOscillator();
-      const bassGain = context.createGain();
-      bass.type = 'sine';
-      bass.frequency.setValueAtTime(92, now + .2);
-      bass.frequency.exponentialRampToValueAtTime(38, now + 1.05);
-      bassGain.gain.setValueAtTime(.001, now);
-      bassGain.gain.setValueAtTime(.7, now + .2);
-      bassGain.gain.exponentialRampToValueAtTime(.001, now + 1.1);
-      bass.connect(bassGain).connect(master);
-      bass.start(now);
-      bass.stop(now + 1.12);
-      setTimeout(() => context.close().catch(() => {}), 1400);
-    } catch (_) {
-      // Audio may be unavailable until a browser gesture unlocks it.
-    }
+    UnoAudio.playReverse();
   }
 
   function startDiscardFlight(card, cardEl) {
@@ -2124,6 +2815,11 @@
     if (isDrawFour) ghost.classList.add('draw4-slam-ghost');
     if (isWild) ghost.classList.add('wild-color-transition-ghost');
     ghost.classList.remove('selected', 'just-drawn');
+    if (isWild || isDrawFour) {
+      UnoAudio.playWild();
+    } else {
+      UnoAudio.playCardPlay();
+    }
     Object.assign(ghost.style, {
       position: 'absolute', left: `${startX}px`, top: `${startY}px`,
       width: `${targetWidth}px`, height: `${targetHeight}px`, zIndex: '9999',
@@ -2229,6 +2925,13 @@
   }
 
   function playSkipImpact(playerId, state) {
+    if (!state) return;
+    const played = state.lastPlayedCard;
+    const signature = `${played?.playerId || ''}:${played?.cardId || state.topCard?.id || ''}:${playerId}`;
+    if (signature === window.lastSkipImpactSignature) return;
+    window.lastSkipImpactSignature = signature;
+    UnoAudio.playSkip();
+
     const myId = appState.myPlayerId || socket.id;
     const isMe = String(playerId) === String(myId);
     const seatName = isMe ? null : getOpponentPositionName(playerId, state.players, myId);
@@ -2318,6 +3021,18 @@
     const incoming = incomingCards || hideDrawTwoTargetCards(playerId, state);
     const drawCount = incoming?.drawCount || 2;
     const isDrawFour = drawCount === 4;
+
+    const played = state?.lastPlayedCard;
+    const signature = `${played?.playerId || ''}:${played?.cardId || state?.topCard?.id || ''}:${playerId}:${drawCount}`;
+    if (signature !== window.lastDrawImpactSignature) {
+      window.lastDrawImpactSignature = signature;
+      if (isDrawFour) {
+        UnoAudio.playWildDrawFour();
+      } else {
+        UnoAudio.playDrawTwo();
+      }
+    }
+
     if (!overlay || !deck || !pile) {
       restoreDrawTwoTargetCards(incoming);
       return;
@@ -2374,6 +3089,7 @@
     let missileHits = 0;
     const showTargetImpact = () => {
       missileHits++;
+      UnoAudio.playCardDraw();
       const burst = document.createElement('div');
       burst.className = isDrawFour ? 'draw4-target-burst' : 'draw2-target-burst';
       burst.style.left = `${targetX}px`;
@@ -2503,6 +3219,7 @@
     const stack = seatName ? document.getElementById(`opp-${seatName}-cards`) : null;
     const targetCard = stack?.querySelectorAll('.card-3d')[Number(draw.handIndex)];
     if (!stack || !targetCard) return;
+    UnoAudio.playCardDraw();
     let overlay = document.getElementById('ghost-animation-overlay');
     if (!overlay) {
       overlay = document.createElement('div');
@@ -2593,6 +3310,9 @@
       if (isDrawTwo) playDrawTwoImpact(drawTwoTargetId, nextState, incomingDrawTwoCards);
       if (isDrawFour) playDrawTwoImpact(drawFourTargetId, nextState, incomingDrawFourCards);
       if (isWild) playWildColorChange(nextState.currentColor, nextState);
+      if (!isSkip && !isReverse && !isDrawTwo && !isDrawFour && !isWild) {
+        UnoAudio.playCardPlay();
+      }
       return;
     }
 
@@ -2629,6 +3349,11 @@
     overlay.appendChild(ghost);
     if (pileCard) pileCard.style.visibility = 'hidden';
     ghost.getBoundingClientRect();
+    if (isWild || isDrawFour) {
+      UnoAudio.playWild();
+    } else {
+      UnoAudio.playCardPlay();
+    }
     let landed = false;
     let reverseFlight = null;
     let wildFlight = null;
@@ -2714,13 +3439,28 @@
       return;
     }
 
+    // Determine current authoritative index in hand
+    const myHand = appState.latestServerState?.myHand;
+    const authorIndex = Array.isArray(myHand)
+      ? myHand.findIndex(c => String(c?.id) === String(card?.id))
+      : -1;
+    const effectiveIndex = (authorIndex !== -1) ? authorIndex : (cardEl?._cardIndex ?? idx);
+
+    // Guard against attempting to play a card that is no longer in the authoritative hand
+    if (Array.isArray(myHand) && authorIndex === -1) {
+      showToast('Card not found in your hand.');
+      cardEl?.remove();
+      appState.selectedCardId = null;
+      return;
+    }
+
     // Tap 2: Play the selected card
     if (appState.selectedCardId && String(appState.selectedCardId) === String(card.id)) {
       appState.selectedCardId = null;
 
       if (card.color === 'wild' || card.value === 'wild' || card.value === 'wild_draw4') {
         appState.pendingWildCardId = card.id;
-        appState.pendingWildCardIndex = idx;
+        appState.pendingWildCardIndex = effectiveIndex;
         const colorModal = document.getElementById('color-picker-modal');
         if (colorModal) {
           const discardHub = document.getElementById('discard-pile-3d');
@@ -2738,7 +3478,7 @@
         socket.emit('play_card', {
           roomId: appState.roomId,
           cardId: card.id,
-          cardIndex: idx
+          cardIndex: effectiveIndex
         });
 
         // Defensive timeout reset in case of packet loss
@@ -3081,10 +3821,141 @@
 
     if (btnDrawerSound) {
       btnDrawerSound.addEventListener('click', () => {
-        soundEnabled = !soundEnabled;
-        if (soundStatus) soundStatus.textContent = soundEnabled ? 'ON' : 'OFF';
-        if (soundIcon) soundIcon.className = soundEnabled ? 'fa-solid fa-volume-high' : 'fa-solid fa-volume-xmark';
-        showToast(soundEnabled ? '🔊 Sound Enabled' : '🔇 Sound Muted');
+        const nextState = UnoAudio.isMuted();
+        UnoAudio.setMasterSound(nextState);
+        soundEnabled = nextState;
+        if (soundStatus) soundStatus.textContent = nextState ? 'ON' : 'OFF';
+        if (soundIcon) soundIcon.className = nextState ? 'fa-solid fa-volume-high' : 'fa-solid fa-volume-xmark';
+        const labelMaster = document.getElementById('label-master-sound');
+        const btnMaster = document.getElementById('btn-toggle-master-sound');
+        if (labelMaster) labelMaster.textContent = nextState ? 'ON' : 'OFF';
+        if (btnMaster) btnMaster.classList.toggle('active', nextState);
+        showToast(nextState ? '🔊 Sound Enabled' : '🔇 Sound Muted');
+      });
+    }
+
+    const btnDrawerBgm = document.getElementById('btn-drawer-bgm');
+    if (btnDrawerBgm) {
+      btnDrawerBgm.addEventListener('click', () => {
+        const next = !UnoAudio.isBgmEnabled();
+        UnoAudio.setBgmEnabled(next);
+        const drawerBgmStatus = document.getElementById('drawer-bgm-status');
+        const drawerBgmIcon = document.getElementById('drawer-bgm-icon');
+        const labelBgm = document.getElementById('label-bgm-status');
+        const btnBgm = document.getElementById('btn-toggle-bgm');
+        if (drawerBgmStatus) drawerBgmStatus.textContent = next ? 'ON' : 'OFF';
+        if (drawerBgmIcon) drawerBgmIcon.style.opacity = next ? '1' : '0.5';
+        if (labelBgm) labelBgm.textContent = next ? 'ON' : 'OFF';
+        if (btnBgm) btnBgm.classList.toggle('active', next);
+        showToast(next ? '🎵 Background Music ON' : '⏸️ Background Music OFF');
+      });
+    }
+
+    // Sound FX Debugger in Game Drawer (Manual Audio Balance Testing)
+    const btnToggleSoundDebug = document.getElementById('btn-toggle-sound-debug');
+    const soundDebugPanel = document.getElementById('sound-debug-panel');
+    const soundDebugChevron = document.getElementById('sound-debug-chevron');
+    const soundDebugStatus = document.getElementById('sound-debug-status');
+    const btnTestAllSounds = document.getElementById('btn-test-all-sounds');
+    const soundTestButtons = document.querySelectorAll('.btn-sound-test');
+
+    function ensureSoundUnmuted() {
+      if (UnoAudio.isMuted()) {
+        UnoAudio.setMasterSound(true);
+        soundEnabled = true;
+        if (soundStatus) soundStatus.textContent = 'ON';
+        if (soundIcon) soundIcon.className = 'fa-solid fa-volume-high';
+        const labelMaster = document.getElementById('label-master-sound');
+        const btnMaster = document.getElementById('btn-toggle-master-sound');
+        if (labelMaster) labelMaster.textContent = 'ON';
+        if (btnMaster) btnMaster.classList.toggle('active', true);
+        showToast('🔊 Sound unmuted for audio test');
+      }
+    }
+
+    if (btnToggleSoundDebug && soundDebugPanel) {
+      btnToggleSoundDebug.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isHidden = soundDebugPanel.classList.toggle('hidden');
+        btnToggleSoundDebug.setAttribute('aria-expanded', (!isHidden).toString());
+        if (soundDebugChevron) {
+          soundDebugChevron.classList.toggle('open', !isHidden);
+        }
+      });
+    }
+
+    soundTestButtons.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        ensureSoundUnmuted();
+        const soundKey = btn.dataset.sound;
+        const soundLabel = btn.dataset.label || btn.querySelector('.sound-name')?.textContent || soundKey;
+
+        // Visual pulse feedback
+        btn.classList.add('pulse-active');
+        setTimeout(() => btn.classList.remove('pulse-active'), 220);
+
+        if (window.UnoAudio && typeof window.UnoAudio.testSound === 'function') {
+          window.UnoAudio.testSound(soundKey);
+        } else if (window.UnoAudio && typeof window.UnoAudio[soundKey] === 'function') {
+          window.UnoAudio[soundKey](true);
+        }
+
+        if (soundDebugStatus) {
+          soundDebugStatus.innerHTML = `<i class="fa-solid fa-volume-high" style="color:#00d2ff;"></i> Tested: <strong>${soundLabel}</strong>`;
+        }
+      });
+    });
+
+    if (btnTestAllSounds) {
+      let isPlayingAll = false;
+      btnTestAllSounds.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (isPlayingAll) return;
+        ensureSoundUnmuted();
+        isPlayingAll = true;
+        btnTestAllSounds.disabled = true;
+        btnTestAllSounds.style.opacity = '0.6';
+
+        const sequence = [
+          { key: 'playCardPlay', label: '1/8 Card Play' },
+          { key: 'playCardDraw', label: '2/8 Card Draw' },
+          { key: 'playShuffle', label: '3/8 Deck Shuffle' },
+          { key: 'playSkip', label: '4/8 Skip Turn' },
+          { key: 'playReverse', label: '5/8 Reverse' },
+          { key: 'playDrawTwo', label: '6/8 Draw Two' },
+          { key: 'playWild', label: '7/8 Wild Card' },
+          { key: 'playWildDrawFour', label: '8/8 Wild Draw 4' }
+        ];
+
+        sequence.forEach((item, index) => {
+          setTimeout(() => {
+            const btn = document.querySelector(`.btn-sound-test[data-sound="${item.key}"]`);
+            if (btn) {
+              btn.classList.add('pulse-active');
+              setTimeout(() => btn.classList.remove('pulse-active'), 250);
+            }
+
+            if (window.UnoAudio && typeof window.UnoAudio.testSound === 'function') {
+              window.UnoAudio.testSound(item.key);
+            }
+
+            if (soundDebugStatus) {
+              soundDebugStatus.innerHTML = `<i class="fa-solid fa-circle-play" style="color:#f7b731;"></i> Playing: <strong>${item.label}</strong>`;
+            }
+
+            if (index === sequence.length - 1) {
+              setTimeout(() => {
+                isPlayingAll = false;
+                btnTestAllSounds.disabled = false;
+                btnTestAllSounds.style.opacity = '1';
+                if (soundDebugStatus) {
+                  soundDebugStatus.innerHTML = `<i class="fa-solid fa-circle-check" style="color:#2ed573;"></i> All 8 sounds tested! Audio balance verified.`;
+                }
+              }, 450);
+            }
+          }, index * 420);
+        });
       });
     }
 
@@ -3173,12 +4044,13 @@
     });
 
     updateGameScaling();
-    initLayoutCustomizer();
+    initSettingsAndLayoutCustomizer();
 
     console.log('🎮 UNO 3D Perspective Game Client fully initialized.');
   }
 
   function startDrawGhost(deck, onArrive) {
+    UnoAudio.playCardDraw();
     const hand = document.getElementById('player-cards-fan');
     if (!hand) { onArrive(); return; }
     const handCards = Array.from(hand.children)
@@ -3277,6 +4149,8 @@
           if (index < 0) return;
           const faceUpCard = create3DCardElement(pending.card, index, 0, false);
           faceUpCard.dataset.cardId = String(pending.card.id);
+          faceUpCard.dataset.theme = document.documentElement.dataset.deckTheme || 'classic';
+          faceUpCard._cardIndex = index;
           ['--x', '--y', '--angle', '--index', '--i'].forEach(name => {
             faceUpCard.style.setProperty(name, realCard.style.getPropertyValue(name));
           });
@@ -3287,7 +4161,14 @@
           if (pending.state.lastDrawnCardId && String(pending.state.lastDrawnCardId) === String(pending.card.id)) {
             faceUpCard.classList.add('just-drawn');
           }
-          faceUpCard.addEventListener('click', () => handleCardClick(pending.card, faceUpCard, index));
+          faceUpCard.addEventListener('click', () => {
+            const myHand = appState.latestServerState?.myHand;
+            const currentHandIndex = Array.isArray(myHand)
+              ? myHand.findIndex(c => String(c?.id) === String(pending.card?.id))
+              : -1;
+            const effectiveIndex = (currentHandIndex !== -1) ? currentHandIndex : (faceUpCard._cardIndex ?? index);
+            handleCardClick(pending.card, faceUpCard, effectiveIndex);
+          });
           realCard.replaceWith(faceUpCard);
         }, 280);
       }, 760);
@@ -3392,41 +4273,228 @@
     }
   }
 
-  function initLayoutCustomizer() {
+  function initSettingsAndLayoutCustomizer() {
     loadLayoutPreferences();
 
     const modal = document.getElementById('layout-customizer-modal');
-    const btnOpenMenu = document.getElementById('btn-customize-layout');
-    const btnOpenDrawer = document.getElementById('btn-drawer-layout');
+    const btnOpenMenuSettings = document.getElementById('btn-main-settings');
+    const btnOpenMenuLayout = document.getElementById('btn-customize-layout');
+    const btnOpenDrawerSettings = document.getElementById('btn-drawer-settings');
+    const btnOpenDrawerLayout = document.getElementById('btn-drawer-layout');
     const btnClose = document.getElementById('btn-layout-close');
     const btnSave = document.getElementById('btn-layout-save');
     const btnReset = document.getElementById('btn-layout-reset');
 
+    // Tabs
+    const tabBtnSound = document.getElementById('tab-btn-sound');
+    const tabBtnLayout = document.getElementById('tab-btn-layout');
+    const tabPaneSound = document.getElementById('settings-tab-sound');
+    const tabPaneLayout = document.getElementById('settings-tab-layout');
+
+    function switchTab(target) {
+      if (target === 'sound') {
+        if (tabBtnSound) { tabBtnSound.classList.add('active'); tabBtnSound.setAttribute('aria-selected', 'true'); }
+        if (tabBtnLayout) { tabBtnLayout.classList.remove('active'); tabBtnLayout.setAttribute('aria-selected', 'false'); }
+        if (tabPaneSound) tabPaneSound.classList.remove('hidden');
+        if (tabPaneLayout) tabPaneLayout.classList.add('hidden');
+      } else {
+        if (tabBtnLayout) { tabBtnLayout.classList.add('active'); tabBtnLayout.setAttribute('aria-selected', 'true'); }
+        if (tabBtnSound) { tabBtnSound.classList.remove('active'); tabBtnSound.setAttribute('aria-selected', 'false'); }
+        if (tabPaneLayout) tabPaneLayout.classList.remove('hidden');
+        if (tabPaneSound) tabPaneSound.classList.add('hidden');
+      }
+    }
+
+    if (tabBtnSound) tabBtnSound.addEventListener('click', () => switchTab('sound'));
+    if (tabBtnLayout) tabBtnLayout.addEventListener('click', () => switchTab('layout'));
+
+    function openSettingsModal(defaultTab = 'sound') {
+      switchTab(defaultTab);
+      syncAudioUiElements();
+      if (modal) modal.classList.remove('hidden');
+      const gameMenuDrawer = document.getElementById('game-menu-drawer');
+      if (gameMenuDrawer) gameMenuDrawer.classList.add('hidden');
+      if (UnoAudio && typeof UnoAudio.isBgmEnabled === 'function' && UnoAudio.isBgmEnabled()) {
+        UnoAudio.startBGM();
+      }
+    }
+
+    function closeSettingsModal() {
+      if (modal) modal.classList.add('hidden');
+    }
+
+    if (btnOpenMenuSettings) btnOpenMenuSettings.addEventListener('click', () => openSettingsModal('sound'));
+    if (btnOpenMenuLayout) btnOpenMenuLayout.addEventListener('click', () => openSettingsModal('layout'));
+    if (btnOpenDrawerSettings) btnOpenDrawerSettings.addEventListener('click', () => openSettingsModal('sound'));
+    if (btnOpenDrawerLayout) btnOpenDrawerLayout.addEventListener('click', () => openSettingsModal('layout'));
+    if (btnClose) btnClose.addEventListener('click', closeSettingsModal);
+    if (btnSave) btnSave.addEventListener('click', closeSettingsModal);
+
+    if (modal) {
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeSettingsModal();
+      });
+    }
+
+    // Audio UI synchronization helper
+    function syncAudioUiElements() {
+      if (!window.UnoAudio) return;
+
+      // 1. Master Sound
+      const isMuted = UnoAudio.isMuted();
+      const btnMaster = document.getElementById('btn-toggle-master-sound');
+      const labelMaster = document.getElementById('label-master-sound');
+      const iconMaster = document.getElementById('settings-master-icon');
+      const drawerSoundStatus = document.getElementById('sound-status');
+      const drawerSoundIcon = document.getElementById('sound-icon');
+
+      if (btnMaster) btnMaster.classList.toggle('active', !isMuted);
+      if (labelMaster) labelMaster.textContent = isMuted ? 'OFF' : 'ON';
+      if (iconMaster) iconMaster.className = isMuted ? 'fa-solid fa-volume-xmark audio-icon-main' : 'fa-solid fa-volume-high audio-icon-main';
+      if (drawerSoundStatus) drawerSoundStatus.textContent = isMuted ? 'OFF' : 'ON';
+      if (drawerSoundIcon) drawerSoundIcon.className = isMuted ? 'fa-solid fa-volume-xmark' : 'fa-solid fa-volume-high';
+
+      // 2. BGM
+      const bgmActive = UnoAudio.isBgmEnabled();
+      const btnBgm = document.getElementById('btn-toggle-bgm');
+      const labelBgm = document.getElementById('label-bgm-status');
+      const drawerBgmStatus = document.getElementById('drawer-bgm-status');
+      const drawerBgmIcon = document.getElementById('drawer-bgm-icon');
+
+      if (btnBgm) btnBgm.classList.toggle('active', bgmActive);
+      if (labelBgm) labelBgm.textContent = bgmActive ? 'ON' : 'OFF';
+      if (drawerBgmStatus) drawerBgmStatus.textContent = bgmActive ? 'ON' : 'OFF';
+      if (drawerBgmIcon) drawerBgmIcon.style.opacity = bgmActive ? '1' : '0.5';
+
+      const sliderBgm = document.getElementById('slider-bgm-volume');
+      const valBgm = document.getElementById('val-bgm-volume');
+      const curBgmPct = Math.round(UnoAudio.getBgmVolume() * 100);
+      if (sliderBgm) sliderBgm.value = curBgmPct;
+      if (valBgm) valBgm.textContent = `${curBgmPct}%`;
+
+      // 3. SFX
+      const sfxActive = UnoAudio.isSfxEnabled();
+      const btnSfx = document.getElementById('btn-toggle-sfx');
+      const labelSfx = document.getElementById('label-sfx-status');
+
+      if (btnSfx) btnSfx.classList.toggle('active', sfxActive);
+      if (labelSfx) labelSfx.textContent = sfxActive ? 'ON' : 'OFF';
+
+      const sliderSfx = document.getElementById('slider-sfx-volume');
+      const valSfx = document.getElementById('val-sfx-volume');
+      const curSfxPct = Math.round(UnoAudio.getSfxVolume() * 100);
+      if (sliderSfx) sliderSfx.value = curSfxPct;
+      if (valSfx) valSfx.textContent = `${curSfxPct}%`;
+    }
+
+    // Master Sound Toggle
+    const btnMaster = document.getElementById('btn-toggle-master-sound');
+    if (btnMaster) {
+      btnMaster.addEventListener('click', () => {
+        const nextState = UnoAudio.isMuted();
+        UnoAudio.setMasterSound(nextState);
+        syncAudioUiElements();
+        showToast(nextState ? '🔊 Master Sound Enabled' : '🔇 Master Sound Muted');
+      });
+    }
+
+    // BGM Toggle
+    const btnBgm = document.getElementById('btn-toggle-bgm');
+    if (btnBgm) {
+      btnBgm.addEventListener('click', () => {
+        const next = !UnoAudio.isBgmEnabled();
+        UnoAudio.setBgmEnabled(next);
+        syncAudioUiElements();
+        showToast(next ? '🎵 Background Music ON' : '⏸️ Background Music OFF');
+      });
+    }
+
+    // BGM Volume Slider
+    const sliderBgm = document.getElementById('slider-bgm-volume');
+    if (sliderBgm) {
+      const onBgmVolChange = () => {
+        const val = parseInt(sliderBgm.value, 10);
+        const valBadge = document.getElementById('val-bgm-volume');
+        if (valBadge) valBadge.textContent = `${val}%`;
+        UnoAudio.setBgmVolume(val / 100);
+      };
+      sliderBgm.addEventListener('input', onBgmVolChange);
+      sliderBgm.addEventListener('change', onBgmVolChange);
+    }
+
+    // SFX Toggle
+    const btnSfx = document.getElementById('btn-toggle-sfx');
+    if (btnSfx) {
+      btnSfx.addEventListener('click', () => {
+        const next = !UnoAudio.isSfxEnabled();
+        UnoAudio.setSfxEnabled(next);
+        syncAudioUiElements();
+        showToast(next ? '⚡ Sound Effects ON' : '🔇 Sound Effects OFF');
+      });
+    }
+
+    // SFX Volume Slider
+    const sliderSfx = document.getElementById('slider-sfx-volume');
+    if (sliderSfx) {
+      const onSfxVolChange = () => {
+        const val = parseInt(sliderSfx.value, 10);
+        const valBadge = document.getElementById('val-sfx-volume');
+        if (valBadge) valBadge.textContent = `${val}%`;
+        UnoAudio.setSfxVolume(val / 100);
+      };
+      sliderSfx.addEventListener('input', onSfxVolChange);
+      sliderSfx.addEventListener('change', onSfxVolChange);
+    }
+
+    // Settings SFX Test buttons
+    const btnSettingsTestAll = document.getElementById('btn-settings-test-all');
+    if (btnSettingsTestAll) {
+      let isPlayingSeq = false;
+      btnSettingsTestAll.addEventListener('click', () => {
+        if (isPlayingSeq) return;
+        isPlayingSeq = true;
+        btnSettingsTestAll.disabled = true;
+        btnSettingsTestAll.style.opacity = '0.6';
+
+        const sequence = [
+          'playCardPlay', 'playCardDraw', 'playShuffle', 'playSkip',
+          'playReverse', 'playDrawTwo', 'playWild', 'playWildDrawFour'
+        ];
+        sequence.forEach((soundKey, idx) => {
+          setTimeout(() => {
+            UnoAudio.testSound(soundKey);
+            const testBtn = document.querySelector(`.settings-sfx-test-section .btn-sound-test[data-sound="${soundKey}"]`);
+            if (testBtn) {
+              testBtn.classList.add('pulse-active');
+              setTimeout(() => testBtn.classList.remove('pulse-active'), 220);
+            }
+          }, idx * 280);
+        });
+
+        setTimeout(() => {
+          isPlayingSeq = false;
+          btnSettingsTestAll.disabled = false;
+          btnSettingsTestAll.style.opacity = '1';
+        }, sequence.length * 280 + 100);
+      });
+    }
+
+    const settingsSoundTestButtons = document.querySelectorAll('.settings-sfx-test-section .btn-sound-test');
+    settingsSoundTestButtons.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const soundKey = btn.dataset.sound;
+        btn.classList.add('pulse-active');
+        setTimeout(() => btn.classList.remove('pulse-active'), 220);
+        UnoAudio.testSound(soundKey);
+      });
+    });
+
+    // Layout customizer controls
     const sBoard = document.getElementById('slider-board-scale');
     const sCard = document.getElementById('slider-card-size');
     const sBot = document.getElementById('slider-bot-size');
     const sFont = document.getElementById('slider-font-scale');
-
-    function openModal() {
-      if (modal) modal.classList.remove('hidden');
-      const gameMenuDrawer = document.getElementById('game-menu-drawer');
-      if (gameMenuDrawer) gameMenuDrawer.classList.add('hidden');
-    }
-
-    function closeModal() {
-      if (modal) modal.classList.add('hidden');
-    }
-
-    if (btnOpenMenu) btnOpenMenu.addEventListener('click', openModal);
-    if (btnOpenDrawer) btnOpenDrawer.addEventListener('click', openModal);
-    if (btnClose) btnClose.addEventListener('click', closeModal);
-    if (btnSave) btnSave.addEventListener('click', closeModal);
-
-    if (modal) {
-      modal.addEventListener('click', (e) => {
-        if (e.target === modal) closeModal();
-      });
-    }
 
     const handleSliderChange = () => {
       const prefs = {
@@ -3465,12 +4533,13 @@
         const delta = parseFloat(btn.dataset.delta || '0');
         const slider = document.getElementById(sliderId);
         if (slider) {
-          const min = parseFloat(slider.min || '0.7');
-          const max = parseFloat(slider.max || '1.4');
+          const min = parseFloat(slider.min || '0');
+          const max = parseFloat(slider.max || '100');
           let newVal = parseFloat(slider.value) + delta;
           newVal = Math.min(max, Math.max(min, Math.round(newVal * 100) / 100));
           slider.value = newVal;
-          handleSliderChange();
+          slider.dispatchEvent(new Event('input', { bubbles: true }));
+          slider.dispatchEvent(new Event('change', { bubbles: true }));
         }
       });
     });
@@ -3484,6 +4553,9 @@
         showToast('🔄 Layout reset to default');
       });
     }
+
+    // Sync initial audio UI states
+    syncAudioUiElements();
   }
 
   // Document ready lifecycle
