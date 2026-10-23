@@ -1,0 +1,6 @@
+{
+  "summary":  "Implementation plan to replace TTS with prerecorded deep male MP3 voice clips (skip.mp3, reverse.mp3, draw_two.mp3, wild.mp3, wild_draw_four.mp3) using HTML5 Audio in JavaScript with instant clip interruption and zero network dependency.",
+  "updatedAt":  "2026-10-20T16:38:04.083238179Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

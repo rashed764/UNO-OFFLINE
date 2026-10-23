@@ -483,6 +483,9 @@
             <button id="btn-drawer-bgm" class="btn-drawer-item">
               <i class="fa-solid fa-music" id="drawer-bgm-icon"></i> Music: <span id="drawer-bgm-status">ON</span>
             </button>
+            <button id="btn-drawer-voice" class="btn-drawer-item">
+              <i class="fa-solid fa-comment-dots" id="drawer-voice-icon"></i> Voice: <span id="drawer-voice-status">ON</span>
+            </button>
 
             <!-- Sound FX Debugger Menu for Testing Audio Balance -->
             <div class="drawer-debug-card">
@@ -685,6 +688,53 @@
                     <button type="button" class="btn-sound-test" data-sound="playWildDrawFour" data-label="Wild Draw 4">
                       <i class="fa-solid fa-bolt"></i>
                       <span class="sound-name">Draw 4</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Spoken Voice Lines Card -->
+              <div class="audio-control-card">
+                <div class="audio-control-header">
+                  <div class="audio-label-group">
+                    <i class="fa-solid fa-comment-dots audio-icon-main" style="color: #ff9f43;"></i>
+                    <div>
+                      <span class="audio-title">Spoken Voice Lines</span>
+                      <span class="audio-sub">Arcade card callouts, UNO shouts & match results</span>
+                    </div>
+                  </div>
+                  <button type="button" id="btn-toggle-voice" class="btn-pill-toggle active">
+                    <span id="label-voice-status">ON</span>
+                  </button>
+                </div>
+                <div class="settings-sfx-test-section" style="margin-top: 6px;">
+                  <div class="sfx-test-header-row">
+                    <span><i class="fa-solid fa-microphone-lines"></i> Audition Voice Callouts</span>
+                  </div>
+                  <div class="sound-debug-grid compact-grid" style="grid-template-columns: repeat(3, 1fr);">
+                    <button type="button" class="btn-sound-test btn-voice-test" data-voice="skip">
+                      <i class="fa-solid fa-ban"></i>
+                      <span class="sound-name">Skip</span>
+                    </button>
+                    <button type="button" class="btn-sound-test btn-voice-test" data-voice="reverse">
+                      <i class="fa-solid fa-arrows-rotate"></i>
+                      <span class="sound-name">Reverse</span>
+                    </button>
+                    <button type="button" class="btn-sound-test btn-voice-test" data-voice="draw2">
+                      <i class="fa-solid fa-plus"></i>
+                      <span class="sound-name">Draw 2</span>
+                    </button>
+                    <button type="button" class="btn-sound-test btn-voice-test" data-voice="wild">
+                      <i class="fa-solid fa-wand-magic-sparkles"></i>
+                      <span class="sound-name">Wild</span>
+                    </button>
+                    <button type="button" class="btn-sound-test btn-voice-test" data-voice="wild_draw4">
+                      <i class="fa-solid fa-bolt"></i>
+                      <span class="sound-name">Draw 4</span>
+                    </button>
+                    <button type="button" class="btn-sound-test btn-voice-test" data-voice="uno">
+                      <i class="fa-solid fa-bullhorn"></i>
+                      <span class="sound-name">UNO!</span>
                     </button>
                   </div>
                 </div>

@@ -9,8 +9,10 @@ import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.speech.tts.TextToSpeech
 import android.view.ViewGroup
 import android.util.Log
+import java.util.Locale
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
@@ -76,7 +78,116 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-class AndroidBridge(private val context: Context, private val webView: WebView) {
+class AndroidBridge(
+    private val context: Context,
+    private val webView: WebView? = null
+) : TextToSpeech.OnInitListener {
+
+    private var tts: TextToSpeech? = null
+
+    @Volatile
+    private var isTtsReady = false
+
+    init {
+        try {
+            tts = TextToSpeech(context.applicationContext, this)
+        } catch (e: Exception) {
+            Log.e("AndroidBridge", "Failed to initialize TextToSpeech", e)
+        }
+    }
+
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            val result = tts?.setLanguage(Locale.US)
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                val defaultResult = tts?.setLanguage(Locale.getDefault())
+                isTtsReady = (defaultResult != TextToSpeech.LANG_MISSING_DATA && defaultResult != TextToSpeech.LANG_NOT_SUPPORTED)
+            } else {
+                isTtsReady = true
+            }
+
+            // Inspect available voices and select a natural English male voice if available
+            try {
+                val voices = tts?.voices
+                if (!voices.isNullOrEmpty()) {
+                    val maleVoice = voices.firstOrNull { voice ->
+                        val isEnglish = voice.locale?.language.equals("en", ignoreCase = true)
+                        val name = voice.name.lowercase(Locale.ROOT)
+                        isEnglish && (
+                            (name.contains("male") && !name.contains("female")) ||
+                            name.contains("-sfg") ||
+                            name.contains("-tpd") ||
+                            name.contains("-iom") ||
+                            name.contains("-iol")
+                        )
+                    } ?: voices.firstOrNull { voice ->
+                        val isEnglish = voice.locale?.language.equals("en", ignoreCase = true)
+                        val name = voice.name.lowercase(Locale.ROOT)
+                        isEnglish && !name.contains("female")
+                    } ?: voices.firstOrNull { voice ->
+                        voice.locale?.language.equals("en", ignoreCase = true)
+                    }
+
+                    if (maleVoice != null) {
+                        tts?.voice = maleVoice
+                        Log.d("AndroidBridge", "Selected deep male voice: ${maleVoice.name} (locale=${maleVoice.locale})")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("AndroidBridge", "Could not filter male voices: ${e.message}")
+            }
+
+            Log.d("AndroidBridge", "TextToSpeech initialized successfully, isReady: $isTtsReady")
+        } else {
+            Log.e("AndroidBridge", "TextToSpeech initialization failed with status: $status")
+            isTtsReady = false
+        }
+    }
+
+    @JavascriptInterface
+    fun speak(text: String?, pitch: Float, speechRate: Float) {
+        val message = text?.trim() ?: return
+        if (message.isEmpty() || message.length > 120) return
+        if (!isTtsReady || tts == null) {
+            Log.w("AndroidBridge", "speak called but TTS is not ready yet: $message")
+            return
+        }
+
+        try {
+            val safePitch = pitch.coerceIn(0.5f, 2.0f)
+            val safeRate = speechRate.coerceIn(0.5f, 2.5f)
+            tts?.setPitch(safePitch)
+            tts?.setSpeechRate(safeRate)
+            // QUEUE_FLUSH interrupts previous callouts for snappy, immediate responses
+            tts?.speak(message, TextToSpeech.QUEUE_FLUSH, null, "uno_voice_${System.currentTimeMillis()}")
+            Log.d("AndroidBridge", "Speaking utterance: \"$message\" (pitch=$safePitch, rate=$safeRate)")
+        } catch (e: Exception) {
+            Log.e("AndroidBridge", "Error speaking utterance: $message", e)
+        }
+    }
+
+    @JavascriptInterface
+    fun stopSpeech() {
+        try {
+            tts?.stop()
+        } catch (e: Exception) {
+            Log.e("AndroidBridge", "Error stopping speech", e)
+        }
+    }
+
+    @JavascriptInterface
+    fun isTtsReady(): Boolean {
+        return isTtsReady
+    }
+
+    fun shutdown() {
+        try {
+            tts?.stop()
+            tts?.shutdown()
+        } catch (_: Exception) {}
+        tts = null
+        isTtsReady = false
+    }
 
     @JavascriptInterface
     fun vibrate(durationMillis: Long) {
@@ -118,6 +229,7 @@ class AndroidBridge(private val context: Context, private val webView: WebView) 
 fun UnoGameScreen() {
     val context = LocalContext.current
     var webViewInstance: WebView? = remember { null }
+    var bridgeInstance by remember { mutableStateOf<AndroidBridge?>(null) }
     var pendingPermissionRequest by remember { mutableStateOf<PermissionRequest?>(null) }
 
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
@@ -162,13 +274,17 @@ fun UnoGameScreen() {
                         domStorageEnabled = true
                         allowFileAccess = true
                         allowContentAccess = true
+                        allowFileAccessFromFileURLs = true
+                        allowUniversalAccessFromFileURLs = true
                         mediaPlaybackRequiresUserGesture = false
                         cacheMode = WebSettings.LOAD_DEFAULT
                         useWideViewPort = true
                         loadWithOverviewMode = true
                     }
 
-                    addJavascriptInterface(AndroidBridge(ctx, this), "AndroidBridge")
+                    val bridge = AndroidBridge(ctx, this)
+                    bridgeInstance = bridge
+                    addJavascriptInterface(bridge, "AndroidBridge")
 
                     webChromeClient = object : WebChromeClient() {
                         override fun onPermissionRequest(request: PermissionRequest?) {
@@ -231,6 +347,7 @@ fun UnoGameScreen() {
     DisposableEffect(Unit) {
         onDispose {
             pendingPermissionRequest = null
+            bridgeInstance?.shutdown()
             webViewInstance?.destroy()
         }
     }

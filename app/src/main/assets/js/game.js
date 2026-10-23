@@ -705,6 +705,10 @@
     appState.isDealing = true;
     appState.isDealingOrFanning = true;
     window.isDealingOrFanning = true;
+    window.hasAnnouncedMatchGameOver = false;
+    window.lastAnnouncedCardId = null;
+    window.lastUnoCallTimestamp = 0;
+    if (typeof UnoVoice !== 'undefined') UnoVoice.cancelAll();
 
     showScreen('game-screen');
 
@@ -783,8 +787,16 @@
   });
 
   // Real-time UNO Call
-  socket.on('uno_called', ({ playerName, message }) => {
+  socket.on('uno_called', ({ playerName, playerId, message }) => {
     showToast(message || `📣 ${playerName} called UNO!`);
+    const isLocal = playerId
+      ? String(playerId) === String(appState.myPlayerId || socket.id)
+      : String(playerName || '').trim().toLowerCase() === String(appState.playerName || '').trim().toLowerCase();
+    const now = Date.now();
+    if (!window.lastUnoCallTimestamp || (now - window.lastUnoCallTimestamp) > 1800) {
+      window.lastUnoCallTimestamp = now;
+      if (typeof UnoVoice !== 'undefined') UnoVoice.announceUno(isLocal);
+    }
   });
 
   // Error Messages
@@ -806,10 +818,13 @@
     let payout = 0;
     const matchStake = Number(wager?.stake ?? appState.stake ?? 50);
     const settledMatchId = matchId || appState.matchRewardId;
+    let isLocalWinner = false;
+    if (winnerId != null) {
+      isLocalWinner = String(winnerId) === String(appState.myPlayerId || socket.id);
+    } else {
+      isLocalWinner = String(winnerName || '').trim().toLowerCase() === String(appState.playerName || '').trim().toLowerCase();
+    }
     if (!appState.isAdmin && matchStake > 0 && window.UnoEconomy && settledMatchId) {
-      const isLocalWinner = winnerId
-        ? String(winnerId) === String(appState.myPlayerId || socket.id)
-        : String(winnerName || '').trim().toLowerCase() === String(appState.playerName || '').trim().toLowerCase();
       const playerCount = Number(wager?.playerCount || appState.targetPlayers || 2);
       payout = isLocalWinner ? matchStake * playerCount : 0;
       appState.matchRewardId = null;
@@ -819,6 +834,11 @@
       : `${message || `${winnerName} has won the match!`} ${payout ? `You won the ${payout} coin pot!` : `Your ${appState.stake} coin stake was lost.`}`.trim();
     if (modalEl) modalEl.classList.remove('hidden');
     clearAnimationOverlay();
+
+    if (!window.hasAnnouncedMatchGameOver) {
+      window.hasAnnouncedMatchGameOver = true;
+      if (typeof UnoVoice !== 'undefined') UnoVoice.announceOutcome(isLocalWinner);
+    }
   });
 
   // ==========================================================================
@@ -2599,6 +2619,9 @@
       localStorage.setItem('uno_sound_enabled', masterSoundEnabled ? 'true' : 'false');
       if (!masterSoundEnabled) {
         stopBGM();
+        if (typeof window !== 'undefined' && window.UnoVoice && typeof window.UnoVoice.cancelAll === 'function') {
+          window.UnoVoice.cancelAll();
+        }
       } else {
         if (bgmEnabled) startBGM();
       }
@@ -2641,6 +2664,7 @@
       isMuted,
       isBgmEnabled,
       isSfxEnabled,
+      isVoiceEnabled: () => (window.UnoVoice ? window.UnoVoice.isVoiceEnabled() : false),
       getBgmVolume,
       getSfxVolume,
       setMasterSound,
@@ -2648,6 +2672,11 @@
       setBgmVolume,
       setSfxEnabled,
       setSfxVolume,
+      setVoiceEnabled: (en) => { if (window.UnoVoice) window.UnoVoice.setVoiceEnabled(en); },
+      announceCard: (c, local) => { if (window.UnoVoice) window.UnoVoice.announceCard(c, local); },
+      announceUno: (local) => { if (window.UnoVoice) window.UnoVoice.announceUno(local); },
+      announceOutcome: (win) => { if (window.UnoVoice) window.UnoVoice.announceOutcome(win); },
+      cancelVoice: () => { if (window.UnoVoice) window.UnoVoice.cancelAll(); },
       startBGM,
       stopBGM,
       pauseBGM,
@@ -2665,6 +2694,162 @@
     };
   })();
   window.UnoAudio = UnoAudio;
+
+  // ==========================================================================
+  // UNIFIED SPOKEN VOICE LINES SUBSYSTEM (Prerecorded Deep Male Voice Clips)
+  // ==========================================================================
+  const UnoVoice = (function() {
+    let voiceEnabled = localStorage.getItem('uno_voice_enabled') !== 'false';
+    let currentVoiceAudio = null;
+
+    const VOICE_ASSETS = {
+      'skip': 'audio/voice/skip.mp3',
+      'reverse': 'audio/voice/reverse.mp3',
+      'draw2': 'audio/voice/draw_two.mp3',
+      'wild': 'audio/voice/wild.mp3',
+      'wild_draw4': 'audio/voice/wild_draw_four.mp3'
+    };
+
+    // Pre-instantiate audio pool for fast, unlagged playback
+    const audioPool = {};
+    if (typeof Audio !== 'undefined') {
+      try {
+        Object.keys(VOICE_ASSETS).forEach(key => {
+          const clip = new Audio(VOICE_ASSETS[key]);
+          clip.preload = 'auto';
+          audioPool[key] = clip;
+        });
+      } catch (_) {}
+    }
+
+    function isVoiceEnabled() {
+      if (window.UnoAudio && typeof window.UnoAudio.isMuted === 'function') {
+        if (window.UnoAudio.isMuted()) return false;
+      }
+      return voiceEnabled;
+    }
+
+    function setVoiceEnabled(enabled) {
+      voiceEnabled = !!enabled;
+      localStorage.setItem('uno_voice_enabled', voiceEnabled ? 'true' : 'false');
+      if (!voiceEnabled) {
+        cancelAll();
+      }
+    }
+
+    function cancelAll() {
+      if (currentVoiceAudio) {
+        try {
+          currentVoiceAudio.pause();
+          currentVoiceAudio.currentTime = 0;
+        } catch (_) {}
+        currentVoiceAudio = null;
+      }
+      if (window.AndroidBridge && typeof window.AndroidBridge.stopSpeech === 'function') {
+        try {
+          window.AndroidBridge.stopSpeech();
+        } catch (_) {}
+      }
+    }
+
+    function playVoiceClip(key) {
+      if (!key || !isVoiceEnabled()) return;
+      const src = VOICE_ASSETS[key];
+      if (!src) return;
+
+      // Stop previous clip immediately
+      if (currentVoiceAudio) {
+        try {
+          currentVoiceAudio.pause();
+          currentVoiceAudio.currentTime = 0;
+        } catch (_) {}
+        currentVoiceAudio = null;
+      }
+
+      try {
+        let sound = audioPool[key];
+        if (!sound) {
+          sound = new Audio(src);
+          audioPool[key] = sound;
+        }
+        sound.currentTime = 0;
+        currentVoiceAudio = sound;
+        const playPromise = sound.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(err => {
+            console.warn('[UnoVoice] Playback error for ' + key + ':', err);
+          });
+        }
+      } catch (e) {
+        console.warn('[UnoVoice] Audio instantiation error for ' + key + ':', e);
+      }
+    }
+
+    function formatCardCallout(card) {
+      if (!card) return null;
+      const rawValue = String(card.value != null ? card.value : '').toLowerCase().trim();
+
+      // Power cards ONLY: return asset key
+      if (rawValue === 'skip') return 'skip';
+      if (rawValue === 'reverse') return 'reverse';
+      if (rawValue === 'draw2') return 'draw2';
+      if (rawValue === 'wild') return 'wild';
+      if (rawValue === 'wild_draw4') return 'wild_draw4';
+
+      // Normal cards: strictly silent (no voice announcement)
+      return null;
+    }
+
+    function announceCard(card, isLocal = true) {
+      if (!card) return;
+      const clipKey = formatCardCallout(card);
+      if (!clipKey) return; // Silent for normal number cards!
+      playVoiceClip(clipKey);
+    }
+
+    function announceUno(isLocal = true) {
+      if (window.AndroidBridge && typeof window.AndroidBridge.speak === 'function' && isVoiceEnabled()) {
+        try {
+          window.AndroidBridge.speak('UNO!', isLocal ? 0.85 : 0.80, 1.00);
+        } catch (_) {}
+      }
+    }
+
+    function announceOutcome(isLocalWinner) {
+      if (window.AndroidBridge && typeof window.AndroidBridge.speak === 'function' && isVoiceEnabled()) {
+        try {
+          if (isLocalWinner) {
+            window.AndroidBridge.speak('You win!', 0.82, 0.92);
+          } else {
+            window.AndroidBridge.speak('You lose!', 0.75, 0.88);
+          }
+        } catch (_) {}
+      }
+    }
+
+    function testVoice(sampleKey) {
+      if (sampleKey === 'draw2') playVoiceClip('draw2');
+      else if (sampleKey === 'skip') playVoiceClip('skip');
+      else if (sampleKey === 'reverse') playVoiceClip('reverse');
+      else if (sampleKey === 'wild') playVoiceClip('wild');
+      else if (sampleKey === 'wild_draw4') playVoiceClip('wild_draw4');
+      else if (sampleKey === 'uno') announceUno(true);
+    }
+
+    return {
+      isVoiceEnabled,
+      setVoiceEnabled,
+      announceCard,
+      announceUno,
+      announceOutcome,
+      cancelAll,
+      testVoice,
+      formatCardCallout,
+      playVoiceClip,
+      VOICE_ASSETS
+    };
+  })();
+  window.UnoVoice = UnoVoice;
 
   function playWildColorChord(color) {
     if (UnoAudio.isMuted()) return;
@@ -2899,6 +3084,10 @@
     pending.flight?.trail.remove();
     window.pendingDiscardFlight = null;
     renderGame(pending.state, pending.rotation);
+    if (pending.card) {
+      window.lastAnnouncedCardId = String(pending.card.id);
+      UnoVoice.announceCard(pending.card, true);
+    }
     if (pending.skipTargetId != null) playSkipImpact(pending.skipTargetId, pending.state);
     if (String(pending.card.value).toLowerCase() === 'reverse') playReverseImpact(pending.state);
     if (pending.drawTwoTargetId != null) {
@@ -3298,6 +3487,10 @@
       || (isDrawFour && drawFourTargetId == null))
       || signature === window.lastRemoteDiscardAnimationKey) return;
     window.lastRemoteDiscardAnimationKey = signature;
+    if (nextState.topCard && String(nextState.topCard.id) !== window.lastAnnouncedCardId) {
+      window.lastAnnouncedCardId = String(nextState.topCard.id);
+      UnoVoice.announceCard(nextState.topCard, false);
+    }
     const incomingDrawTwoCards = isDrawTwo ? hideDrawTwoTargetCards(drawTwoTargetId, nextState) : null;
     const incomingDrawFourCards = isDrawFour ? hideDrawTwoTargetCards(drawFourTargetId, nextState, 4) : null;
 
@@ -3851,6 +4044,23 @@
       });
     }
 
+    const btnDrawerVoice = document.getElementById('btn-drawer-voice');
+    if (btnDrawerVoice) {
+      btnDrawerVoice.addEventListener('click', () => {
+        const next = !UnoVoice.isVoiceEnabled();
+        UnoVoice.setVoiceEnabled(next);
+        const drawerVoiceStatus = document.getElementById('drawer-voice-status');
+        const drawerVoiceIcon = document.getElementById('drawer-voice-icon');
+        const labelVoice = document.getElementById('label-voice-status');
+        const btnVoice = document.getElementById('btn-toggle-voice');
+        if (drawerVoiceStatus) drawerVoiceStatus.textContent = next ? 'ON' : 'OFF';
+        if (drawerVoiceIcon) drawerVoiceIcon.style.opacity = next ? '1' : '0.5';
+        if (labelVoice) labelVoice.textContent = next ? 'ON' : 'OFF';
+        if (btnVoice) btnVoice.classList.toggle('active', next);
+        showToast(next ? '🗣️ Spoken Voice ON' : '🤐 Spoken Voice OFF');
+      });
+    }
+
     // Sound FX Debugger in Game Drawer (Manual Audio Balance Testing)
     const btnToggleSoundDebug = document.getElementById('btn-toggle-sound-debug');
     const soundDebugPanel = document.getElementById('sound-debug-panel');
@@ -3996,6 +4206,10 @@
         }
         const gameOverModal = document.getElementById('game-over-modal');
         if (gameOverModal) gameOverModal.classList.add('hidden');
+        window.hasAnnouncedMatchGameOver = false;
+        window.lastAnnouncedCardId = null;
+        window.lastUnoCallTimestamp = 0;
+        if (typeof UnoVoice !== 'undefined') UnoVoice.cancelAll();
         if (appState.roomId) {
           socket.emit('start_game', { roomId: appState.roomId });
         }
@@ -4004,6 +4218,7 @@
 
     if (btnHome) {
       btnHome.addEventListener('click', () => {
+        if (typeof UnoVoice !== 'undefined') UnoVoice.cancelAll();
         window.location.reload();
       });
     }
@@ -4385,6 +4600,18 @@
       const curSfxPct = Math.round(UnoAudio.getSfxVolume() * 100);
       if (sliderSfx) sliderSfx.value = curSfxPct;
       if (valSfx) valSfx.textContent = `${curSfxPct}%`;
+
+      // 4. Voice Lines
+      const voiceActive = UnoVoice.isVoiceEnabled();
+      const btnVoice = document.getElementById('btn-toggle-voice');
+      const labelVoice = document.getElementById('label-voice-status');
+      const drawerVoiceStatus = document.getElementById('drawer-voice-status');
+      const drawerVoiceIcon = document.getElementById('drawer-voice-icon');
+
+      if (btnVoice) btnVoice.classList.toggle('active', voiceActive);
+      if (labelVoice) labelVoice.textContent = voiceActive ? 'ON' : 'OFF';
+      if (drawerVoiceStatus) drawerVoiceStatus.textContent = voiceActive ? 'ON' : 'OFF';
+      if (drawerVoiceIcon) drawerVoiceIcon.style.opacity = voiceActive ? '1' : '0.5';
     }
 
     // Master Sound Toggle
@@ -4487,6 +4714,31 @@
         btn.classList.add('pulse-active');
         setTimeout(() => btn.classList.remove('pulse-active'), 220);
         UnoAudio.testSound(soundKey);
+      });
+    });
+
+    // Voice Toggle in Settings
+    const btnVoice = document.getElementById('btn-toggle-voice');
+    if (btnVoice) {
+      btnVoice.addEventListener('click', () => {
+        const next = !UnoVoice.isVoiceEnabled();
+        UnoVoice.setVoiceEnabled(next);
+        syncAudioUiElements();
+        showToast(next ? '🗣️ Spoken Voice ON' : '🤐 Spoken Voice OFF');
+      });
+    }
+
+    // Voice Audition Test Buttons
+    const voiceTestButtons = document.querySelectorAll('.btn-voice-test');
+    voiceTestButtons.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const voiceKey = btn.dataset.voice;
+        btn.classList.add('pulse-active');
+        setTimeout(() => btn.classList.remove('pulse-active'), 220);
+        if (typeof UnoVoice !== 'undefined' && typeof UnoVoice.testVoice === 'function') {
+          UnoVoice.testVoice(voiceKey);
+        }
       });
     });
 
